@@ -15,6 +15,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.viewmodel.compose.viewModel
+import dev.asnodj.pianotrainer.lesson.HandMode
 import dev.asnodj.pianotrainer.midi.MidiConnectionState
 import dev.asnodj.pianotrainer.song.Hand
 import dev.asnodj.pianotrainer.ui.DiscoveryScreen
@@ -53,6 +54,9 @@ fun AppRoot(viewModel: MainViewModel = viewModel()) {
     val speedFactor by viewModel.speedFactor.collectAsState()
     val isPlaying by viewModel.isPlaying.collectAsState()
     val playbackPositionMs by viewModel.playbackPositionMs.collectAsState()
+    val practiceMode by viewModel.practiceMode.collectAsState()
+    val tempoEngine by viewModel.tempoEngine.collectAsState()
+    val semiAutoEnabled by viewModel.semiAutoEnabled.collectAsState()
 
     BackHandler(enabled = screen != Screen.Home) {
         viewModel.goHome()
@@ -80,6 +84,13 @@ fun AppRoot(viewModel: MainViewModel = viewModel()) {
                     val availableHands = remember(currentScreen.song) {
                         currentScreen.song.notes.map { songNote -> songNote.hand }.toSet()
                     }
+                    val currentTempoEngine = tempoEngine
+                    val tempoState = currentTempoEngine?.state?.collectAsState()?.value
+                    val accompanimentHandAvailable = when (handMode) {
+                        HandMode.RIGHT -> Hand.LEFT in availableHands
+                        HandMode.LEFT -> Hand.RIGHT in availableHands
+                        HandMode.BOTH -> false
+                    }
                     LessonScreen(
                         songTitle = currentScreen.song.title,
                         lessonState = lessonState,
@@ -91,9 +102,16 @@ fun AppRoot(viewModel: MainViewModel = viewModel()) {
                         speedFactor = speedFactor,
                         isPlaying = isPlaying,
                         playbackPositionMs = playbackPositionMs,
+                        practiceMode = practiceMode,
+                        tempoState = tempoState,
+                        tempoNotes = currentTempoEngine?.notes ?: emptyList(),
+                        semiAutoEnabled = semiAutoEnabled,
+                        semiAutoAvailable = accompanimentHandAvailable,
                         onToggleHand = viewModel::toggleHand,
                         onSpeedChange = viewModel::changeSpeed,
                         onTogglePlayback = viewModel::togglePlayback,
+                        onToggleSemiAuto = viewModel::toggleSemiAuto,
+                        onTogglePracticeMode = viewModel::togglePracticeMode,
                         onSeek = viewModel::seekTo,
                         onRestart = viewModel::restartLesson,
                         onBack = viewModel::goHome,

@@ -49,15 +49,19 @@ import com.composables.icons.lucide.ArrowLeft
 import com.composables.icons.lucide.Gauge
 import com.composables.icons.lucide.Hand
 import com.composables.icons.lucide.Lucide
+import com.composables.icons.lucide.Music
 import com.composables.icons.lucide.Play
 import com.composables.icons.lucide.RotateCcw
 import com.composables.icons.lucide.Square
 import com.composables.icons.lucide.Star
+import dev.asnodj.pianotrainer.PracticeMode
 import dev.asnodj.pianotrainer.R
 import dev.asnodj.pianotrainer.SPEED_OPTIONS
 import dev.asnodj.pianotrainer.lesson.HandMode
 import dev.asnodj.pianotrainer.lesson.LessonState
 import dev.asnodj.pianotrainer.lesson.NoteGroup
+import dev.asnodj.pianotrainer.lesson.TempoJudgment
+import dev.asnodj.pianotrainer.lesson.TempoState
 import dev.asnodj.pianotrainer.song.Hand
 import dev.asnodj.pianotrainer.song.SongNote
 
@@ -99,54 +103,84 @@ fun LessonScreen(
     speedFactor: Float,
     isPlaying: Boolean,
     playbackPositionMs: Int,
+    practiceMode: PracticeMode,
+    tempoState: TempoState?,
+    tempoNotes: List<SongNote>,
+    semiAutoEnabled: Boolean,
+    semiAutoAvailable: Boolean,
     onToggleHand: (Hand) -> Unit,
     onSpeedChange: (Float) -> Unit,
     onTogglePlayback: () -> Unit,
+    onToggleSemiAuto: () -> Unit,
+    onTogglePracticeMode: () -> Unit,
     onSeek: (Float) -> Unit,
     onRestart: () -> Unit,
     onBack: () -> Unit,
     onDebugTouch: ((note: Int, isNoteOn: Boolean) -> Unit)? = null,
 ) {
-    val expectedKeys = if (isPlaying) emptyMap() else expectedKeysOf(lessonState, noteGroups)
+    val inTempoMode = practiceMode == PracticeMode.TEMPO && tempoState != null
+    val expectedKeys = if (isPlaying || inTempoMode) emptyMap() else expectedKeysOf(lessonState, noteGroups)
 
     Column(modifier = Modifier.fillMaxSize()) {
         LessonHeader(
             songTitle = songTitle,
-            lessonState = lessonState,
+            subtitle = if (inTempoMode) {
+                stringResource(R.string.lesson_tempo_score, tempoState!!.scorePercent)
+            } else {
+                stringResource(R.string.lesson_progress, lessonState.groupIndex, lessonState.totalGroups)
+            },
             handMode = handMode,
             leftHandAvailable = leftHandAvailable,
             rightHandAvailable = rightHandAvailable,
             speedFactor = speedFactor,
             isPlaying = isPlaying,
+            inTempoMode = inTempoMode,
+            semiAutoEnabled = semiAutoEnabled,
+            semiAutoAvailable = semiAutoAvailable,
             onToggleHand = onToggleHand,
             onSpeedChange = onSpeedChange,
             onTogglePlayback = onTogglePlayback,
-            onSeek = onSeek,
+            onToggleSemiAuto = onToggleSemiAuto,
+            onTogglePracticeMode = onTogglePracticeMode,
+            onRewind = { if (inTempoMode) onRestart() else onSeek(0f) },
             onBack = onBack,
         )
         Slider(
-            value = if (lessonState.totalGroups == 0) {
-                0f
-            } else {
-                lessonState.groupIndex.toFloat() / lessonState.totalGroups
+            value = when {
+                inTempoMode -> {
+                    val judgedCount = tempoState!!.perfectCount + tempoState.goodCount + tempoState.missedCount
+                    if (tempoState.judgments.isEmpty()) 0f
+                    else judgedCount.toFloat() / tempoState.judgments.size
+                }
+                lessonState.totalGroups == 0 -> 0f
+                else -> lessonState.groupIndex.toFloat() / lessonState.totalGroups
             },
             onValueChange = onSeek,
+            enabled = !inTempoMode,
             modifier = Modifier.fillMaxWidth().height(20.dp),
         )
         Box(modifier = Modifier.fillMaxWidth().weight(0.62f)) {
-            NoteHighway(
-                lessonState = lessonState,
-                noteGroups = noteGroups,
-                speedFactor = speedFactor,
-                isPlaying = isPlaying,
-                playbackPositionMs = playbackPositionMs,
-                modifier = Modifier.fillMaxSize(),
-            )
+            if (inTempoMode) {
+                TempoHighway(
+                    notes = tempoNotes,
+                    tempoState = tempoState!!,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            } else {
+                NoteHighway(
+                    lessonState = lessonState,
+                    noteGroups = noteGroups,
+                    speedFactor = speedFactor,
+                    isPlaying = isPlaying,
+                    playbackPositionMs = playbackPositionMs,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
             KeySparkles(
                 pressedNotes = physicalPressedNotes,
                 colorFor = { note ->
                     when {
-                        note in lessonState.wrongHeld -> PianoPalette.wrong
+                        !inTempoMode && note in lessonState.wrongHeld -> PianoPalette.wrong
                         else -> expectedKeysOf(lessonState, noteGroups)[note]
                             ?.let { expectedKey -> handColor(expectedKey.hand) }
                             ?: PianoPalette.correct
@@ -159,18 +193,31 @@ fun LessonScreen(
                     .align(Alignment.TopEnd)
                     .padding(8.dp),
             )
-            if (lessonState.finished && !isPlaying) {
+            if (inTempoMode && tempoState!!.finished) {
+                FinishedOverlay(
+                    accuracyPercent = tempoState.scorePercent,
+                    detail = stringResource(
+                        R.string.lesson_tempo_detail,
+                        tempoState.perfectCount,
+                        tempoState.goodCount,
+                        tempoState.missedCount,
+                    ),
+                    onRestart = onRestart,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            } else if (!inTempoMode && lessonState.finished && !isPlaying) {
                 FinishedOverlay(
                     accuracyPercent = lessonState.accuracyPercent,
+                    detail = null,
                     onRestart = onRestart,
                     modifier = Modifier.fillMaxSize(),
                 )
             }
         }
         PianoKeyboard(
-            pressedNotes = lessonState.correctlyPressed,
+            pressedNotes = if (inTempoMode) physicalPressedNotes else lessonState.correctlyPressed,
             expectedKeys = expectedKeys,
-            wrongNotes = lessonState.wrongHeld,
+            wrongNotes = if (inTempoMode) emptySet() else lessonState.wrongHeld,
             onDebugTouch = onDebugTouch,
             modifier = Modifier.fillMaxWidth().weight(0.38f),
         )
@@ -192,27 +239,33 @@ private fun expectedKeysOf(lessonState: LessonState, noteGroups: List<NoteGroup>
 }
 
 /**
- * Header row: back, title + progress, play/stop, tempo menu and one switch per
- * hand (both on = both hands; the last one cannot be turned off).
+ * Header row: back, title + subtitle (progress or live score), rewind,
+ * play/stop, semi-auto accompaniment, tempo-mode toggle, tempo menu and one
+ * switch per hand (both on = both hands; the last one cannot be turned off).
  */
 @Composable
 private fun LessonHeader(
     songTitle: String,
-    lessonState: LessonState,
+    subtitle: String,
     handMode: HandMode,
     leftHandAvailable: Boolean,
     rightHandAvailable: Boolean,
     speedFactor: Float,
     isPlaying: Boolean,
+    inTempoMode: Boolean,
+    semiAutoEnabled: Boolean,
+    semiAutoAvailable: Boolean,
     onToggleHand: (Hand) -> Unit,
     onSpeedChange: (Float) -> Unit,
     onTogglePlayback: () -> Unit,
-    onSeek: (Float) -> Unit,
+    onToggleSemiAuto: () -> Unit,
+    onTogglePracticeMode: () -> Unit,
+    onRewind: () -> Unit,
     onBack: () -> Unit,
 ) {
     Row(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         IconButton(onClick = onBack) {
@@ -224,26 +277,51 @@ private fun LessonHeader(
         Column(modifier = Modifier.weight(1f)) {
             Text(text = songTitle, style = MaterialTheme.typography.titleMedium)
             Text(
-                text = stringResource(R.string.lesson_progress, lessonState.groupIndex, lessonState.totalGroups),
+                text = subtitle,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        IconButton(onClick = { onSeek(0f) }) {
+        IconButton(onClick = onRewind) {
             Icon(
                 imageVector = Lucide.RotateCcw,
                 contentDescription = stringResource(R.string.lesson_rewind),
             )
         }
-        IconButton(onClick = onTogglePlayback) {
-            Icon(
-                imageVector = if (isPlaying) Lucide.Square else Lucide.Play,
-                contentDescription = stringResource(
-                    if (isPlaying) R.string.lesson_stop else R.string.lesson_play
-                ),
-                tint = PianoPalette.expectedHalo,
-            )
+        if (!inTempoMode) {
+            IconButton(onClick = onTogglePlayback) {
+                Icon(
+                    imageVector = if (isPlaying) Lucide.Square else Lucide.Play,
+                    contentDescription = stringResource(
+                        if (isPlaying) R.string.lesson_stop else R.string.lesson_play
+                    ),
+                    tint = PianoPalette.expectedHalo,
+                )
+            }
         }
+        FilterChip(
+            selected = semiAutoEnabled && semiAutoAvailable,
+            onClick = onToggleSemiAuto,
+            enabled = semiAutoAvailable,
+            label = {},
+            leadingIcon = {
+                Icon(
+                    imageVector = Lucide.Music,
+                    contentDescription = stringResource(R.string.lesson_semi_auto),
+                    tint = if (semiAutoEnabled && semiAutoAvailable) {
+                        PianoPalette.expectedHalo
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                    modifier = Modifier.size(18.dp),
+                )
+            },
+        )
+        FilterChip(
+            selected = inTempoMode,
+            onClick = onTogglePracticeMode,
+            label = { Text(text = stringResource(R.string.lesson_mode_tempo)) },
+        )
         SpeedMenu(speedFactor = speedFactor, onSpeedChange = onSpeedChange)
         HandSwitch(
             hand = Hand.LEFT,
@@ -338,12 +416,14 @@ private fun HandSwitch(hand: Hand, active: Boolean, enabled: Boolean, onClick: (
  * accuracy score and the restart button.
  *
  * @param accuracyPercent Final accuracy 0..100.
+ * @param detail Optional extra result line (tempo mode: perfect/good/missed).
  * @param onRestart Restart callback.
  * @param modifier Layout modifier.
  */
 @Composable
 private fun FinishedOverlay(
     accuracyPercent: Int,
+    detail: String?,
     onRestart: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -382,6 +462,13 @@ private fun FinishedOverlay(
                 style = MaterialTheme.typography.titleMedium,
                 color = PianoPalette.ivory,
             )
+            if (detail != null) {
+                Text(
+                    text = detail,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = PianoPalette.ivoryDim,
+                )
+            }
             Button(onClick = onRestart) {
                 Icon(
                     imageVector = Lucide.RotateCcw,
@@ -458,6 +545,46 @@ private fun NoteHighway(
 }
 
 /**
+ * Tempo-mode highway: the song scrolls on its own (the clock lives in the
+ * ViewModel); hit notes disappear, missed notes turn grey and scroll past.
+ *
+ * @param notes The judged notes of the run.
+ * @param tempoState Current run snapshot.
+ * @param modifier Layout modifier.
+ */
+@Composable
+private fun TempoHighway(
+    notes: List<SongNote>,
+    tempoState: TempoState,
+    modifier: Modifier = Modifier,
+) {
+    val textMeasurer = rememberTextMeasurer()
+    Canvas(modifier = modifier.clipToBounds()) {
+        drawRect(color = PianoPalette.highway, size = size)
+        notes.forEachIndexed { noteIndex, songNote ->
+            val judgment = tempoState.judgments.getOrNull(noteIndex) ?: TempoJudgment.PENDING
+            if (judgment == TempoJudgment.PERFECT || judgment == TempoJudgment.GOOD) {
+                return@forEachIndexed
+            }
+            val relativeStartMs = songNote.startMs - tempoState.positionMs.toFloat()
+            if (relativeStartMs <= LOOKAHEAD_MS) {
+                drawFallingNote(
+                    textMeasurer = textMeasurer,
+                    songNote = songNote,
+                    relativeStartMs = relativeStartMs,
+                    isExpected = false,
+                    overrideColor = if (judgment == TempoJudgment.MISSED) {
+                        Color(0xFF4A4E52)
+                    } else {
+                        null
+                    },
+                )
+            }
+        }
+    }
+}
+
+/**
  * Draws one falling note colored by hand, with the amber halo and fingering
  * badge when it is the note to play.
  *
@@ -465,12 +592,14 @@ private fun NoteHighway(
  * @param songNote The note to draw.
  * @param relativeStartMs Note start relative to the current scroll position.
  * @param isExpected True when the note belongs to the frozen group.
+ * @param overrideColor Forces the tile color (tempo mode: grey missed notes).
  */
 private fun DrawScope.drawFallingNote(
     textMeasurer: TextMeasurer,
     songNote: SongNote,
     relativeStartMs: Float,
     isExpected: Boolean,
+    overrideColor: Color? = null,
 ) {
     val noteLeft = keyLeftFraction(songNote.midiNote) * size.width
     val noteWidth = keyWidthFraction(songNote.midiNote) * size.width
@@ -485,10 +614,10 @@ private fun DrawScope.drawFallingNote(
 
     drawRoundRect(
         // The tile to play lights up: brighter fill plus a white-hot outline.
-        color = if (isExpected) {
-            lerp(handColor(songNote.hand), Color.White, 0.35f)
-        } else {
-            handColor(songNote.hand)
+        color = when {
+            overrideColor != null -> overrideColor
+            isExpected -> lerp(handColor(songNote.hand), Color.White, 0.35f)
+            else -> handColor(songNote.hand)
         },
         topLeft = topLeft,
         size = noteSize,

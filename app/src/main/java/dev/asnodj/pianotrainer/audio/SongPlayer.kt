@@ -22,9 +22,19 @@ class SongPlayer(private val scope: CoroutineScope) {
 
     private val midiDriver: MidiDriver = MidiDriver.getInstance()
     private var playbackJob: Job? = null
+    private val accompanimentJobs = mutableListOf<Job>()
+    private var driverStarted = false
 
     @Volatile
     private var currentSpeedFactor: Float = 1.0f
+
+    /** Starts the synthesizer once; every playback path goes through this. */
+    private fun ensureDriverStarted() {
+        if (!driverStarted) {
+            midiDriver.start()
+            driverStarted = true
+        }
+    }
 
     private val mutableIsPlaying = MutableStateFlow(false)
 
@@ -53,7 +63,7 @@ class SongPlayer(private val scope: CoroutineScope) {
     fun play(notes: List<SongNote>, speedFactor: Float, onFinished: () -> Unit = {}) {
         stop()
         currentSpeedFactor = speedFactor
-        midiDriver.start()
+        ensureDriverStarted()
         mutableIsPlaying.value = true
         playbackJob = scope.launch {
             try {
@@ -103,10 +113,52 @@ class SongPlayer(private val scope: CoroutineScope) {
         currentSpeedFactor = speedFactor
     }
 
-    /** Stops the playback and silences the synthesizer. */
+    /**
+     * Plays a small window of accompaniment notes (semi-auto mode: the app
+     * plays the other hand while the player advances in wait mode). Notes are
+     * played at their offset relative to [windowStartMs], scaled by the tempo.
+     * Fire-and-forget: windows may overlap; [stop] cancels them all.
+     *
+     * @param notes Accompaniment notes of the window, sorted by start time.
+     * @param windowStartMs Song position the offsets are relative to.
+     * @param speedFactor Tempo multiplier.
+     */
+    fun playAccompaniment(notes: List<SongNote>, windowStartMs: Int, speedFactor: Float) {
+        if (notes.isEmpty()) {
+            return
+        }
+        ensureDriverStarted()
+        accompanimentJobs.removeAll { job -> job.isCompleted }
+        accompanimentJobs.add(scope.launch {
+            val events = buildList {
+                notes.forEach { songNote ->
+                    add(PlaybackEvent(songNote.startMs, songNote.midiNote, isNoteOn = true))
+                    add(PlaybackEvent(songNote.startMs + songNote.durationMs, songNote.midiNote, isNoteOn = false))
+                }
+            }.sortedWith(compareBy({ event -> event.atMs }, { event -> event.isNoteOn }))
+
+            var currentMs = windowStartMs
+            events.forEach { event ->
+                val waitMs = ((event.atMs - currentMs) / speedFactor).toLong()
+                if (waitMs > 0) {
+                    delay(waitMs)
+                }
+                currentMs = event.atMs
+                if (event.isNoteOn) {
+                    sendNoteOn(event.note)
+                } else {
+                    sendNoteOff(event.note)
+                }
+            }
+        })
+    }
+
+    /** Stops the playback and the accompaniment, and silences the synthesizer. */
     fun stop() {
         playbackJob?.cancel()
         playbackJob = null
+        accompanimentJobs.forEach { job -> job.cancel() }
+        accompanimentJobs.clear()
         allNotesOff()
         mutableIsPlaying.value = false
         mutablePositionMs.value = 0
@@ -115,7 +167,10 @@ class SongPlayer(private val scope: CoroutineScope) {
     /** Releases the synthesizer; call when the owner is destroyed. */
     fun release() {
         stop()
-        midiDriver.stop()
+        if (driverStarted) {
+            midiDriver.stop()
+            driverStarted = false
+        }
     }
 
     private fun sendNoteOn(note: Int) {

@@ -6,20 +6,27 @@ import androidx.lifecycle.viewModelScope
 import dev.asnodj.pianotrainer.audio.SongPlayer
 import dev.asnodj.pianotrainer.lesson.HandMode
 import dev.asnodj.pianotrainer.lesson.LessonEngine
+import dev.asnodj.pianotrainer.lesson.TempoEngine
 import dev.asnodj.pianotrainer.midi.MidiConnectionState
 import dev.asnodj.pianotrainer.midi.MidiInputManager
 import dev.asnodj.pianotrainer.song.Hand
 import dev.asnodj.pianotrainer.song.Song
+import dev.asnodj.pianotrainer.song.SongNote
 import dev.asnodj.pianotrainer.song.SongRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.scan
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlin.time.TimeSource
 
 /** Screens of the app (state-based navigation, no nav library needed yet). */
 sealed interface Screen {
@@ -30,6 +37,15 @@ sealed interface Screen {
 
 /** Available tempo multipliers for playback and wait-mode scrolling. */
 val SPEED_OPTIONS = listOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f)
+
+/** The two ways of practicing a song. */
+enum class PracticeMode {
+    /** Song frozen until the correct key (the default learning state). */
+    WAIT,
+
+    /** Song scrolls on its own; notes are judged in timing windows. */
+    TEMPO,
+}
 
 /**
  * App-level state holder: owns the MIDI input manager, the bundled songs, the
@@ -87,7 +103,24 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     /** Demo playback position, drives the highway while playing. */
     val playbackPositionMs: StateFlow<Int> = songPlayer.positionMs
 
+    private val mutablePracticeMode = MutableStateFlow(PracticeMode.WAIT)
+
+    /** Current practice mode of the lesson. */
+    val practiceMode: StateFlow<PracticeMode> = mutablePracticeMode.asStateFlow()
+
+    private val mutableTempoEngine = MutableStateFlow<TempoEngine?>(null)
+
+    /** Engine of the tempo run in progress, null in wait mode. */
+    val tempoEngine: StateFlow<TempoEngine?> = mutableTempoEngine.asStateFlow()
+
+    private val mutableSemiAutoEnabled = MutableStateFlow(false)
+
+    /** True when the app plays the other hand as accompaniment (semi-auto). */
+    val semiAutoEnabled: StateFlow<Boolean> = mutableSemiAutoEnabled.asStateFlow()
+
     private var lessonInputJob: Job? = null
+    private var accompanimentJob: Job? = null
+    private var tempoClockJob: Job? = null
 
     init {
         midiInputManager.start()
@@ -180,11 +213,101 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    /** Restarts the current lesson from the beginning. */
+    /** Restarts the current lesson from the beginning (in the active mode). */
     fun restartLesson() {
         val currentScreen = mutableScreen.value
         if (currentScreen is Screen.Lesson) {
-            startEngine(currentScreen.song)
+            if (mutablePracticeMode.value == PracticeMode.TEMPO) {
+                startTempoRun(currentScreen.song)
+            } else {
+                startEngine(currentScreen.song)
+            }
+        }
+    }
+
+    /** Toggles the semi-auto accompaniment (app plays the other hand). */
+    fun toggleSemiAuto() {
+        mutableSemiAutoEnabled.value = !mutableSemiAutoEnabled.value
+    }
+
+    /**
+     * Switches between wait mode and tempo mode. Entering tempo mode starts a
+     * run from the beginning of the song; leaving it returns to wait mode at
+     * the start.
+     */
+    fun togglePracticeMode() {
+        val currentScreen = mutableScreen.value
+        if (currentScreen !is Screen.Lesson) {
+            return
+        }
+        if (mutablePracticeMode.value == PracticeMode.WAIT) {
+            mutablePracticeMode.value = PracticeMode.TEMPO
+            songPlayer.stop()
+            startTempoRun(currentScreen.song)
+        } else {
+            stopTempoRun()
+            mutablePracticeMode.value = PracticeMode.WAIT
+            mutableLessonEngine.value?.seekToGroup(0)
+        }
+    }
+
+    /**
+     * Starts (or restarts) a tempo run: fresh engine plus the 60 Hz clock that
+     * drives it and the semi-auto accompaniment.
+     *
+     * @param song Song to run.
+     */
+    private fun startTempoRun(song: Song) {
+        songPlayer.stop()
+        tempoClockJob?.cancel()
+        val engine = TempoEngine(song, mutableHandMode.value)
+        mutableTempoEngine.value = engine
+        val accompaniment = accompanimentNotesOf(song)
+        tempoClockJob = viewModelScope.launch {
+            val runStart = TimeSource.Monotonic.markNow()
+            var previousElapsedMs = 0L
+            var songPositionMs = 0.0
+            var accompanimentFromMs = 0
+            while (isActive && !engine.state.value.finished) {
+                val elapsedMs = runStart.elapsedNow().inWholeMilliseconds
+                songPositionMs += (elapsedMs - previousElapsedMs) * mutableSpeedFactor.value
+                previousElapsedMs = elapsedMs
+                val positionMs = songPositionMs.toInt()
+                if (mutableSemiAutoEnabled.value) {
+                    songPlayer.playAccompaniment(
+                        notes = accompaniment.filter { songNote ->
+                            songNote.startMs >= accompanimentFromMs && songNote.startMs < positionMs
+                        },
+                        windowStartMs = accompanimentFromMs,
+                        speedFactor = mutableSpeedFactor.value,
+                    )
+                }
+                accompanimentFromMs = positionMs
+                engine.advanceTo(positionMs)
+                delay(16)
+            }
+        }
+    }
+
+    /** Stops the tempo clock and clears the tempo engine. */
+    private fun stopTempoRun() {
+        tempoClockJob?.cancel()
+        tempoClockJob = null
+        mutableTempoEngine.value = null
+        songPlayer.stop()
+    }
+
+    /**
+     * Notes of the hand(s) the player is NOT practicing (the accompaniment).
+     *
+     * @param song Current song.
+     * @return The other hand's notes; empty when practicing both hands.
+     */
+    private fun accompanimentNotesOf(song: Song): List<SongNote> {
+        return when (mutableHandMode.value) {
+            HandMode.BOTH -> emptyList()
+            HandMode.RIGHT -> song.notes.filter { songNote -> songNote.hand == Hand.LEFT }
+            HandMode.LEFT -> song.notes.filter { songNote -> songNote.hand == Hand.RIGHT }
         }
     }
 
@@ -200,21 +323,28 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     /** Returns to the home screen and stops the current lesson if any. */
     fun goHome() {
+        stopTempoRun()
+        mutablePracticeMode.value = PracticeMode.WAIT
         songPlayer.stop()
         lessonInputJob?.cancel()
         lessonInputJob = null
+        accompanimentJob?.cancel()
+        accompanimentJob = null
         mutableLessonEngine.value = null
         mutableScreen.value = Screen.Home
     }
 
     /**
-     * Creates a fresh engine for the song and plugs the MIDI stream into it.
-     * Keyboard input is ignored while the demo playback is running.
+     * Creates a fresh wait-mode engine for the song, plugs the MIDI stream
+     * into the active engine (wait or tempo), and wires the semi-auto
+     * accompaniment to the wait-mode position. Keyboard input is ignored
+     * while the demo playback is running.
      *
      * @param song Song to practice.
      */
     private fun startEngine(song: Song) {
         lessonInputJob?.cancel()
+        accompanimentJob?.cancel()
         val engine = LessonEngine(song, mutableHandMode.value)
         mutableLessonEngine.value = engine
         lessonInputJob = viewModelScope.launch {
@@ -222,12 +352,43 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 if (songPlayer.isPlaying.value) {
                     return@collect
                 }
-                if (noteEvent.isNoteOn) {
-                    engine.onNoteOn(noteEvent.note)
+                val tempoEngineNow = mutableTempoEngine.value
+                if (mutablePracticeMode.value == PracticeMode.TEMPO && tempoEngineNow != null) {
+                    if (noteEvent.isNoteOn) {
+                        tempoEngineNow.onNoteOn(noteEvent.note)
+                    }
                 } else {
-                    engine.onNoteOff(noteEvent.note)
+                    if (noteEvent.isNoteOn) {
+                        engine.onNoteOn(noteEvent.note)
+                    } else {
+                        engine.onNoteOff(noteEvent.note)
+                    }
                 }
             }
+        }
+        // Semi-auto in wait mode: when the player advances, the accompaniment
+        // notes crossed by the move are played at their tempo-scaled offsets.
+        val accompaniment = accompanimentNotesOf(song)
+        accompanimentJob = viewModelScope.launch {
+            var previousPositionMs = engine.state.value.positionMs
+            engine.state.map { lessonState -> lessonState.positionMs }
+                .distinctUntilChanged()
+                .collect { newPositionMs ->
+                    if (newPositionMs > previousPositionMs &&
+                        mutableSemiAutoEnabled.value &&
+                        mutablePracticeMode.value == PracticeMode.WAIT &&
+                        !songPlayer.isPlaying.value
+                    ) {
+                        songPlayer.playAccompaniment(
+                            notes = accompaniment.filter { songNote ->
+                                songNote.startMs >= previousPositionMs && songNote.startMs < newPositionMs
+                            },
+                            windowStartMs = previousPositionMs,
+                            speedFactor = mutableSpeedFactor.value,
+                        )
+                    }
+                    previousPositionMs = newPositionMs
+                }
         }
     }
 

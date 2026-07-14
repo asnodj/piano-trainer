@@ -20,6 +20,10 @@
     <string name="lesson_stop">Arrêter l\'écoute</string>
     <string name="lesson_speed">Tempo</string>
     <string name="lesson_rewind">Revenir au début</string>
+    <string name="lesson_semi_auto">Accompagnement automatique</string>
+    <string name="lesson_mode_tempo">Tempo</string>
+    <string name="lesson_tempo_score">Score : %1$d %%</string>
+    <string name="lesson_tempo_detail">Parfait %1$d · Bien %2$d · Raté %3$d</string>
     <string name="hand_map_left">Gauche</string>
     <string name="hand_map_right">Droite</string>
 </resources>

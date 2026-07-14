@@ -42,7 +42,14 @@ User priority order (2026-07-14 evening): 1. mic mode, 2. semi-auto, 3. tempo+sc
    blind transcription). Feed detected notes into the same event stream as MIDI.
 2. **Semi-auto assist (promoted from v3)**: the app plays the left hand in audio while
    the player plays the right hand — the piece sounds complete while learning one hand.
+   *2026-07-14: DONE. Works in wait mode (accompaniment windows follow the player's
+   advances at tempo-scaled offsets) and in tempo mode (follows the run clock).
+   Toggle chip in the lesson header, disabled when the song has no other hand.*
 3. **Tempo mode with scoring** (see below).
+   *2026-07-14: DONE. TempoEngine (8 unit tests): ±120ms perfect / ±300ms good windows,
+   missed notes turn grey and scroll past, wrong presses counted, live score in the
+   header, final overlay with stars (3≥90%, 2≥70%) and perfect/good/missed detail.
+   Not yet validated with the real keyboard.*
 - Tempo mode with scoring (timing windows, % + 1–3 stars per section, soft-gating).
 - Practice ladder per song: listen → RH → LH → both (wait) → 50/75% → full speed.
 - **Fingering display**: finger numbers (1–5) inside falling notes + on the virtual
