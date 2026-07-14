@@ -19,6 +19,12 @@
    connection state) and validated on the real PSR-E383.*
 4. **MIDI file loading**: ktmidi, bundled assets; song model = sections of 4–8 bars,
    per-hand tracks.
+   *2026-07-14: implemented. `song/` package: `Song`/`SongNote`/`Section` model,
+   `SmfSongLoader` (ktmidi 0.11.0) with hands-per-track, fingering and sections from a
+   .json sidecar next to each .mid (MIDI cannot carry fingering). `tools/encode_songs.py`
+   authors the comptines. Bundled: Au clair de la lune (self-encoded, RH + fingering,
+   16 bars = 4 sections) and Für Elise (Mutopia, Public Domain, 2 hands — the adult
+   target piece and a robustness test for the loader). 7 loader unit tests.*
 5. **Lesson mode (wait mode)**: falling-notes canvas, song frozen until correct key,
    dual green/red feedback on note + key, hands separate toggle.
 6. **Content v1**: self-encoded comptines (Au clair de la lune, Frère Jacques,
