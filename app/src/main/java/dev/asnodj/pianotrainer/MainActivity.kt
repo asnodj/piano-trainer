@@ -77,8 +77,9 @@ fun AppRoot(viewModel: MainViewModel = viewModel()) {
             )
 
             Screen.Discovery -> DiscoveryScreen(
-                deviceName = (connectionState as? MidiConnectionState.Connected)?.deviceName ?: "",
+                connectionState = connectionState,
                 pressedNotes = pressedNotes,
+                onBack = viewModel::goHome,
                 onDebugTouch = if (BuildConfig.DEBUG) viewModel::injectTouchNote else null,
             )
 
