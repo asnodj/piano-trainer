@@ -146,6 +146,44 @@ class LessonEngineTest {
     }
 
     @Test
+    fun `seeking jumps to the target group and keeps the accumulated score`() {
+        // Prepare
+        val engine = LessonEngine(
+            songOf(note(60, 0), note(62, 600), note(64, 1200), note(65, 1800)),
+            HandMode.BOTH,
+        )
+        engine.onNoteOn(99)
+
+        // Act
+        engine.seekToFraction(0.5f)
+
+        // Assert
+        assertEquals(2, engine.state.value.groupIndex)
+        assertEquals(setOf(64), engine.state.value.expectedNotes)
+        assertEquals(1, engine.state.value.wrongPressCount)
+
+        // Act: rewind to the beginning.
+        engine.seekToGroup(0)
+
+        // Assert
+        assertEquals(0, engine.state.value.groupIndex)
+        assertFalse(engine.state.value.finished)
+    }
+
+    @Test
+    fun `seeking by song position lands on the first group at or after it`() {
+        // Prepare
+        val engine = LessonEngine(songOf(note(60, 0), note(62, 600), note(64, 1200)), HandMode.BOTH)
+
+        // Act
+        engine.seekToMs(600)
+
+        // Assert
+        assertEquals(1, engine.state.value.groupIndex)
+        assertEquals(600, engine.state.value.positionMs)
+    }
+
+    @Test
     fun `right-hand mode drops left-hand notes`() {
         // Prepare
         val engine = LessonEngine(

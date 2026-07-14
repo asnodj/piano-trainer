@@ -78,6 +78,26 @@ class MidiInputManager(context: Context) {
     }
 
     /**
+     * Injects a synthetic note event into the same stream as the hardware
+     * keyboard. Development tool (debug builds tap the virtual keyboard):
+     * lets the app be exercised end to end without the piano.
+     *
+     * @param note MIDI note number.
+     * @param isNoteOn True for press, false for release.
+     */
+    fun injectNoteEvent(note: Int, isNoteOn: Boolean) {
+        mutableNoteEvents.tryEmit(
+            MidiNoteEvent(
+                note = note,
+                velocity = if (isNoteOn) 100 else 0,
+                isNoteOn = isNoteOn,
+                channel = 0,
+                timestampNanos = System.nanoTime(),
+            )
+        )
+    }
+
+    /**
      * Stops watching for devices and releases the open port/device.
      */
     fun stop() {

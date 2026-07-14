@@ -1,11 +1,15 @@
 package dev.asnodj.pianotrainer.ui
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -102,6 +106,9 @@ fun handColor(hand: Hand): Color {
  * @param modifier Layout modifier; the keyboard fills the space it is given.
  * @param expectedKeys Keys to play next with their hand/finger hint.
  * @param wrongNotes Wrong keys currently held, shown red.
+ * @param onDebugTouch Development-only hook (null in release builds): touching
+ *   a key injects it as a note event, so the app can be exercised without the
+ *   piano. Never a learning feature — the goal is the piano, not the phone.
  */
 @Composable
 fun PianoKeyboard(
@@ -109,11 +116,29 @@ fun PianoKeyboard(
     modifier: Modifier = Modifier,
     expectedKeys: Map<Int, ExpectedKey> = emptyMap(),
     wrongNotes: Set<Int> = emptySet(),
+    onDebugTouch: ((note: Int, isNoteOn: Boolean) -> Unit)? = null,
 ) {
     val allNotes = KEYBOARD_FIRST_NOTE..KEYBOARD_LAST_NOTE
     val textMeasurer = rememberTextMeasurer()
 
-    Canvas(modifier = modifier) {
+    val touchModifier = if (onDebugTouch != null) {
+        modifier.pointerInput(Unit) {
+            awaitEachGesture {
+                val down = awaitFirstDown()
+                val note = noteAtPosition(
+                    xFraction = down.position.x / size.width,
+                    yFraction = down.position.y / size.height,
+                )
+                onDebugTouch(note, true)
+                waitForUpOrCancellation()
+                onDebugTouch(note, false)
+            }
+        }
+    } else {
+        modifier
+    }
+
+    Canvas(modifier = touchModifier) {
         val blackKeyHeight = size.height * 0.62f
 
         allNotes.filterNot(::isBlackKey).forEach { note ->
@@ -123,6 +148,31 @@ fun PianoKeyboard(
             drawKey(note, blackKeyHeight, pressedNotes, expectedKeys, wrongNotes, textMeasurer)
         }
     }
+}
+
+/**
+ * Resolves which key sits under a touch position (black keys first, since they
+ * overlap the white row on the upper part of the keyboard).
+ *
+ * @param xFraction Horizontal touch position in 0..1.
+ * @param yFraction Vertical touch position in 0..1.
+ * @return The touched MIDI note number.
+ */
+private fun noteAtPosition(xFraction: Float, yFraction: Float): Int {
+    if (yFraction < 0.62f) {
+        val blackNote = (KEYBOARD_FIRST_NOTE..KEYBOARD_LAST_NOTE)
+            .filter(::isBlackKey)
+            .firstOrNull { note ->
+                val left = keyLeftFraction(note)
+                xFraction >= left && xFraction < left + keyWidthFraction(note)
+            }
+        if (blackNote != null) {
+            return blackNote
+        }
+    }
+    val whiteIndex = (xFraction * WHITE_KEY_COUNT).toInt().coerceIn(0, WHITE_KEY_COUNT - 1)
+    return (KEYBOARD_FIRST_NOTE..KEYBOARD_LAST_NOTE)
+        .filterNot(::isBlackKey)[whiteIndex]
 }
 
 /**
@@ -154,7 +204,7 @@ private fun DrawScope.drawKey(
     if (expected != null && note !in pressedNotes && note !in wrongNotes) {
         // Hand-colored hint with the amber "play me" halo.
         drawRect(color = handColor(expected.hand).copy(alpha = 0.55f), topLeft = keyTopLeft, size = keySize)
-        drawRect(color = PianoPalette.expectedHalo, topLeft = keyTopLeft, size = keySize, style = Stroke(width = 4f))
+        drawRect(color = PianoPalette.nextNoteGlow, topLeft = keyTopLeft, size = keySize, style = Stroke(width = 4f))
         if (expected.finger != null) {
             drawFingerBadge(
                 textMeasurer = textMeasurer,

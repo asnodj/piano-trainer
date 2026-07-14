@@ -20,8 +20,8 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -40,6 +40,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.rememberTextMeasurer
@@ -69,6 +70,8 @@ private const val LOOKAHEAD_MS = 4000f
  *
  * @param songTitle Title shown in the header.
  * @param lessonState Current engine snapshot.
+ * @param physicalPressedNotes Keys physically held on the MIDI keyboard,
+ *   drives the key-press sparkle bursts.
  * @param noteGroups All groups of the lesson, for rendering upcoming notes.
  * @param handMode Currently practiced hand(s).
  * @param leftHandAvailable True when the song has left-hand notes.
@@ -79,13 +82,16 @@ private const val LOOKAHEAD_MS = 4000f
  * @param onToggleHand Called when a hand switch is tapped.
  * @param onSpeedChange Called with the picked tempo multiplier.
  * @param onTogglePlayback Called when the play/stop button is tapped.
+ * @param onSeek Called with a 0..1 fraction when the player scrubs the song.
  * @param onRestart Called when the player restarts the song.
  * @param onBack Called to leave the lesson.
+ * @param onDebugTouch Debug-build note injection via the virtual keyboard.
  */
 @Composable
 fun LessonScreen(
     songTitle: String,
     lessonState: LessonState,
+    physicalPressedNotes: Set<Int>,
     noteGroups: List<NoteGroup>,
     handMode: HandMode,
     leftHandAvailable: Boolean,
@@ -96,8 +102,10 @@ fun LessonScreen(
     onToggleHand: (Hand) -> Unit,
     onSpeedChange: (Float) -> Unit,
     onTogglePlayback: () -> Unit,
+    onSeek: (Float) -> Unit,
     onRestart: () -> Unit,
     onBack: () -> Unit,
+    onDebugTouch: ((note: Int, isNoteOn: Boolean) -> Unit)? = null,
 ) {
     val expectedKeys = if (isPlaying) emptyMap() else expectedKeysOf(lessonState, noteGroups)
 
@@ -113,14 +121,17 @@ fun LessonScreen(
             onToggleHand = onToggleHand,
             onSpeedChange = onSpeedChange,
             onTogglePlayback = onTogglePlayback,
+            onSeek = onSeek,
             onBack = onBack,
         )
-        LinearProgressIndicator(
-            progress = {
-                if (lessonState.totalGroups == 0) 0f
-                else lessonState.groupIndex.toFloat() / lessonState.totalGroups
+        Slider(
+            value = if (lessonState.totalGroups == 0) {
+                0f
+            } else {
+                lessonState.groupIndex.toFloat() / lessonState.totalGroups
             },
-            modifier = Modifier.fillMaxWidth().height(4.dp),
+            onValueChange = onSeek,
+            modifier = Modifier.fillMaxWidth().height(20.dp),
         )
         Box(modifier = Modifier.fillMaxWidth().weight(0.62f)) {
             NoteHighway(
@@ -129,6 +140,18 @@ fun LessonScreen(
                 speedFactor = speedFactor,
                 isPlaying = isPlaying,
                 playbackPositionMs = playbackPositionMs,
+                modifier = Modifier.fillMaxSize(),
+            )
+            KeySparkles(
+                pressedNotes = physicalPressedNotes,
+                colorFor = { note ->
+                    when {
+                        note in lessonState.wrongHeld -> PianoPalette.wrong
+                        else -> expectedKeysOf(lessonState, noteGroups)[note]
+                            ?.let { expectedKey -> handColor(expectedKey.hand) }
+                            ?: PianoPalette.correct
+                    }
+                },
                 modifier = Modifier.fillMaxSize(),
             )
             HandMapCard(
@@ -148,6 +171,7 @@ fun LessonScreen(
             pressedNotes = lessonState.correctlyPressed,
             expectedKeys = expectedKeys,
             wrongNotes = lessonState.wrongHeld,
+            onDebugTouch = onDebugTouch,
             modifier = Modifier.fillMaxWidth().weight(0.38f),
         )
     }
@@ -183,6 +207,7 @@ private fun LessonHeader(
     onToggleHand: (Hand) -> Unit,
     onSpeedChange: (Float) -> Unit,
     onTogglePlayback: () -> Unit,
+    onSeek: (Float) -> Unit,
     onBack: () -> Unit,
 ) {
     Row(
@@ -202,6 +227,12 @@ private fun LessonHeader(
                 text = stringResource(R.string.lesson_progress, lessonState.groupIndex, lessonState.totalGroups),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        IconButton(onClick = { onSeek(0f) }) {
+            Icon(
+                imageVector = Lucide.RotateCcw,
+                contentDescription = stringResource(R.string.lesson_rewind),
             )
         }
         IconButton(onClick = onTogglePlayback) {
@@ -453,14 +484,19 @@ private fun DrawScope.drawFallingNote(
     }
 
     drawRoundRect(
-        color = handColor(songNote.hand),
+        // The tile to play lights up: brighter fill plus a white-hot outline.
+        color = if (isExpected) {
+            lerp(handColor(songNote.hand), Color.White, 0.35f)
+        } else {
+            handColor(songNote.hand)
+        },
         topLeft = topLeft,
         size = noteSize,
         cornerRadius = CornerRadius(8f, 8f),
     )
     if (isExpected) {
         drawRoundRect(
-            color = PianoPalette.expectedHalo,
+            color = PianoPalette.nextNoteGlow,
             topLeft = topLeft,
             size = noteSize,
             cornerRadius = CornerRadius(8f, 8f),

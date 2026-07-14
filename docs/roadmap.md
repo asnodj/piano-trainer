@@ -33,6 +33,11 @@
    produces the sound the child hears while playing.
 
 ## v2 — the learning system
+- **Microphone input mode (TOP PRIORITY — user decision 2026-07-14)**: play the real
+  piano without the USB cable, notes detected through the phone mic. Scope honestly:
+  MONOPHONIC pitch detection first (autocorrelation/YIN on AudioRecord) — reliable for
+  the single-note comptines; chords/two-hands stay MIDI-only (documented market-wide
+  weakness). Feed detected notes into the same event stream as MIDI.
 - Tempo mode with scoring (timing windows, % + 1–3 stars per section, soft-gating).
 - Practice ladder per song: listen → RH → LH → both (wait) → 50/75% → full speed.
 - **Fingering display**: finger numbers (1–5) inside falling notes + on the virtual
@@ -47,11 +52,10 @@
 ## v3+ — ideas
 - Key-press animations (particles/glow rising from keys, Rousseau-video style) —
   user request 2026-07-14, low priority.
-- Microphone note detection as an optional wireless mode — user request 2026-07-14,
-  second phase. Reservation on record: mic detection is the #1 complaint across the
-  whole market (chords/octaves/latency); preferred wireless answer is a BLE MIDI
-  adapter on the USB TO HOST port (Yamaha UD-BT01 / CME WIDI Uhost), which Android
-  MIDI supports natively.
+- ~~Microphone note detection as an optional wireless mode~~ **PROMOTED to top
+  priority by the user (2026-07-14 evening)** — see v2.
+- Debug builds have a virtual-keyboard touch injector (dev tool only, never a
+  learning feature): app fully testable without the piano.
 - FluidSynth + GeneralUser GS / MuseScore General SF3 for better sound.
 - Notation bridge: mini-staff above the highway, fading note-name labels.
 - Semi-auto assist (app plays LH, player plays RH).

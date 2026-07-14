@@ -108,6 +108,38 @@ class LessonEngine(song: Song, handMode: HandMode) {
     }
 
     /**
+     * Jumps to a given group, keeping the accumulated score. Used by the seek
+     * bar, the rewind button and the hand-switch position continuity.
+     *
+     * @param targetGroupIndex Group to freeze on (clamped; groups.size = end).
+     */
+    fun seekToGroup(targetGroupIndex: Int) {
+        val clampedIndex = targetGroupIndex.coerceIn(0, groups.size)
+        mutableState.value = stateAt(clampedIndex, mutableState.value.wrongPressCount)
+    }
+
+    /**
+     * Jumps to a position expressed as a fraction of the song.
+     *
+     * @param fraction 0.0 = beginning, 1.0 = end.
+     */
+    fun seekToFraction(fraction: Float) {
+        seekToGroup((fraction.coerceIn(0f, 1f) * groups.size).toInt())
+    }
+
+    /**
+     * Jumps to the first group at or after the given song position. Used to
+     * stay in place when the practiced hand changes (the new engine has
+     * different groups but the same timeline).
+     *
+     * @param positionMs Song position to resume from.
+     */
+    fun seekToMs(positionMs: Int) {
+        val groupIndex = groups.indexOfFirst { group -> group.startMs >= positionMs }
+        seekToGroup(if (groupIndex >= 0) groupIndex else groups.size)
+    }
+
+    /**
      * Handles a key release: clears the red feedback of a wrong key.
      *
      * @param note MIDI note number released.

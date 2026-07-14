@@ -1,6 +1,7 @@
 package dev.asnodj.pianotrainer.ui
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -16,13 +17,18 @@ import dev.asnodj.pianotrainer.R
 
 /**
  * Discovery mode: shows the virtual keyboard mirroring what is played on the
- * physical keyboard in real time.
+ * physical keyboard in real time, with golden sparkles per key press.
  *
  * @param deviceName Name of the connected MIDI keyboard, shown in the header.
  * @param pressedNotes MIDI note numbers currently held down.
+ * @param onDebugTouch Debug-build note injection via the virtual keyboard.
  */
 @Composable
-fun DiscoveryScreen(deviceName: String, pressedNotes: Set<Int>) {
+fun DiscoveryScreen(
+    deviceName: String,
+    pressedNotes: Set<Int>,
+    onDebugTouch: ((note: Int, isNoteOn: Boolean) -> Unit)? = null,
+) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -34,15 +40,28 @@ fun DiscoveryScreen(deviceName: String, pressedNotes: Set<Int>) {
             text = stringResource(R.string.keyboard_connected, deviceName),
             style = MaterialTheme.typography.titleMedium,
         )
-        Text(
-            text = stringResource(R.string.discovery_hint),
-            style = MaterialTheme.typography.bodyLarge,
-        )
-        PianoKeyboard(
-            pressedNotes = pressedNotes,
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .weight(1f),
+                .weight(0.5f),
+        ) {
+            Text(
+                text = stringResource(R.string.discovery_hint),
+                style = MaterialTheme.typography.bodyLarge,
+                modifier = Modifier.align(Alignment.Center),
+            )
+            KeySparkles(
+                pressedNotes = pressedNotes,
+                colorFor = { PianoPalette.expectedHalo },
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+        PianoKeyboard(
+            pressedNotes = pressedNotes,
+            onDebugTouch = onDebugTouch,
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(0.5f),
         )
     }
 }

@@ -70,6 +70,7 @@ fun AppRoot(viewModel: MainViewModel = viewModel()) {
             Screen.Discovery -> DiscoveryScreen(
                 deviceName = (connectionState as? MidiConnectionState.Connected)?.deviceName ?: "",
                 pressedNotes = pressedNotes,
+                onDebugTouch = if (BuildConfig.DEBUG) viewModel::injectTouchNote else null,
             )
 
             is Screen.Lesson -> {
@@ -82,6 +83,7 @@ fun AppRoot(viewModel: MainViewModel = viewModel()) {
                     LessonScreen(
                         songTitle = currentScreen.song.title,
                         lessonState = lessonState,
+                        physicalPressedNotes = pressedNotes,
                         noteGroups = engine.noteGroups,
                         handMode = handMode,
                         leftHandAvailable = Hand.LEFT in availableHands,
@@ -92,8 +94,10 @@ fun AppRoot(viewModel: MainViewModel = viewModel()) {
                         onToggleHand = viewModel::toggleHand,
                         onSpeedChange = viewModel::changeSpeed,
                         onTogglePlayback = viewModel::togglePlayback,
+                        onSeek = viewModel::seekTo,
                         onRestart = viewModel::restartLesson,
                         onBack = viewModel::goHome,
+                        onDebugTouch = if (BuildConfig.DEBUG) viewModel::injectTouchNote else null,
                     )
                 }
             }

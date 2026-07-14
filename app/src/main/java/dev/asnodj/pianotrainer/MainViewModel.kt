@@ -128,8 +128,25 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
         if (next != current) {
             mutableHandMode.value = next
-            restartLesson()
+            val currentScreen = mutableScreen.value
+            if (currentScreen is Screen.Lesson) {
+                // Stay where the player was in the song instead of restarting.
+                val previousPositionMs = mutableLessonEngine.value?.state?.value?.positionMs ?: 0
+                startEngine(currentScreen.song)
+                mutableLessonEngine.value?.seekToMs(previousPositionMs)
+            }
         }
+    }
+
+    /**
+     * Jumps inside the current lesson (seek bar / rewind button). Stops the
+     * demo playback so the wait mode takes over at the new position.
+     *
+     * @param fraction 0.0 = beginning, 1.0 = end of the song.
+     */
+    fun seekTo(fraction: Float) {
+        songPlayer.stop()
+        mutableLessonEngine.value?.seekToFraction(fraction)
     }
 
     /**
@@ -169,6 +186,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         if (currentScreen is Screen.Lesson) {
             startEngine(currentScreen.song)
         }
+    }
+
+    /**
+     * Routes a debug-build virtual-keyboard touch into the MIDI stream.
+     *
+     * @param note MIDI note number.
+     * @param isNoteOn True on press, false on release.
+     */
+    fun injectTouchNote(note: Int, isNoteOn: Boolean) {
+        midiInputManager.injectNoteEvent(note, isNoteOn)
     }
 
     /** Returns to the home screen and stops the current lesson if any. */

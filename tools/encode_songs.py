@@ -69,7 +69,7 @@ def write_song(slug: str, notes, metadata: dict, bpm: int) -> None:
 
 # --- Au clair de la lune (traditional, C major, structure A A B A) -----------
 
-C4, D4, E4 = 60, 62, 64
+C4, D4, E4, F4, G4, A4 = 60, 62, 64, 65, 67, 69
 G3, A3, B3 = 55, 57, 59
 
 PHRASE_A = [(C4, 1), (C4, 1), (C4, 1), (D4, 1), (E4, 2), (D4, 2),
@@ -92,5 +92,62 @@ AU_CLAIR_METADATA = {
     "license": "Traditional melody (public domain), encoded by the project",
 }
 
+# --- Estrellita / Twinkle Twinkle (traditional, C major, A A' B B A A') ------
+
+ESTRELLITA_A1 = [(C4, 1), (C4, 1), (G4, 1), (G4, 1), (A4, 1), (A4, 1), (G4, 2)]
+ESTRELLITA_A2 = [(F4, 1), (F4, 1), (E4, 1), (E4, 1), (D4, 1), (D4, 1), (C4, 2)]
+ESTRELLITA_B = [(G4, 1), (G4, 1), (F4, 1), (F4, 1), (E4, 1), (E4, 1), (D4, 2)]
+
+# C five-finger position, pinky stretches up to A.
+ESTRELLITA_FINGERS_A1 = [1, 1, 5, 5, 5, 5, 5]
+ESTRELLITA_FINGERS_A2 = [4, 4, 3, 3, 2, 2, 1]
+ESTRELLITA_FINGERS_B = [5, 5, 4, 4, 3, 3, 2]
+
+ESTRELLITA_NOTES = (ESTRELLITA_A1 + ESTRELLITA_A2 + ESTRELLITA_B + ESTRELLITA_B
+                    + ESTRELLITA_A1 + ESTRELLITA_A2)
+ESTRELLITA_METADATA = {
+    "title": "Estrellita, ¿dónde estás?",
+    "bpm": 90,
+    "barsPerSection": 4,
+    "trackHands": ["right"],
+    "fingering": (ESTRELLITA_FINGERS_A1 + ESTRELLITA_FINGERS_A2 + ESTRELLITA_FINGERS_B
+                  + ESTRELLITA_FINGERS_B + ESTRELLITA_FINGERS_A1 + ESTRELLITA_FINGERS_A2),
+    "license": "Traditional melody (public domain), encoded by the project",
+}
+
+# --- Vive le vent / Jingle Bells chorus (traditional, C major) ---------------
+
+VIVE_LE_VENT_NOTES = [
+    (E4, 1), (E4, 1), (E4, 2),
+    (E4, 1), (E4, 1), (E4, 2),
+    (E4, 1), (G4, 1), (C4, 1), (D4, 1),
+    (E4, 4),
+    (F4, 1), (F4, 1), (F4, 1), (F4, 1),
+    (F4, 1), (E4, 1), (E4, 1), (E4, 1),
+    (E4, 1), (D4, 1), (D4, 1), (E4, 1),
+    (D4, 2), (G4, 2),
+]
+# Entirely inside the C five-finger position.
+VIVE_LE_VENT_FINGERS = [
+    3, 3, 3,
+    3, 3, 3,
+    3, 5, 1, 2,
+    3,
+    4, 4, 4, 4,
+    4, 3, 3, 3,
+    3, 2, 2, 3,
+    2, 5,
+]
+VIVE_LE_VENT_METADATA = {
+    "title": "Vive le vent",
+    "bpm": 100,
+    "barsPerSection": 4,
+    "trackHands": ["right"],
+    "fingering": VIVE_LE_VENT_FINGERS,
+    "license": "Traditional melody (public domain), encoded by the project",
+}
+
 if __name__ == "__main__":
     write_song("au_clair_de_la_lune", AU_CLAIR_NOTES, AU_CLAIR_METADATA, bpm=100)
+    write_song("estrellita", ESTRELLITA_NOTES, ESTRELLITA_METADATA, bpm=90)
+    write_song("vive_le_vent", VIVE_LE_VENT_NOTES, VIVE_LE_VENT_METADATA, bpm=100)

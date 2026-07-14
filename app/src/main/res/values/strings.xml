@@ -19,6 +19,7 @@
     <string name="lesson_play">Écouter le morceau</string>
     <string name="lesson_stop">Arrêter l\'écoute</string>
     <string name="lesson_speed">Tempo</string>
+    <string name="lesson_rewind">Revenir au début</string>
     <string name="hand_map_left">Gauche</string>
     <string name="hand_map_right">Droite</string>
 </resources>
