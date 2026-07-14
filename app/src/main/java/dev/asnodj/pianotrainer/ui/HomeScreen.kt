@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
@@ -75,17 +76,8 @@ fun HomeScreen(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            item {
-                HomeTile(
-                    icon = Lucide.Sparkles,
-                    iconTint = PianoPalette.expectedHalo,
-                    title = stringResource(R.string.home_discovery_title),
-                    subtitle = stringResource(R.string.home_discovery_subtitle),
-                    waitScore = null,
-                    tempoScore = null,
-                    highlighted = true,
-                    onClick = onOpenDiscovery,
-                )
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                DiscoveryBanner(onClick = onOpenDiscovery)
             }
             items(songs) { song ->
                 HomeTile(
@@ -192,11 +184,48 @@ private fun ProfileBadge(
 }
 
 /**
+ * Full-width discovery banner: a horizontal row visually distinct from the
+ * song tiles (different shape, not a different "state").
+ */
+@Composable
+private fun DiscoveryBanner(onClick: () -> Unit) {
+    Card(
+        onClick = onClick,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(38.dp)
+                    .background(MaterialTheme.colorScheme.surface, CircleShape),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = Lucide.Sparkles,
+                    contentDescription = null,
+                    tint = PianoPalette.expectedHalo,
+                    modifier = Modifier.size(20.dp),
+                )
+            }
+            Column(modifier = Modifier.weight(1f)) {
+                Text(text = stringResource(R.string.home_discovery_title), style = MaterialTheme.typography.titleMedium)
+                Text(
+                    text = stringResource(R.string.home_discovery_subtitle),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
+
+/**
  * One library tile: icon, title, subtitle and the active profile's earned
  * stars (wait mode) plus best tempo score when available.
- *
- * @param highlighted True for the discovery tile: amber-tinted background and
- *   border so it stands out from the songs.
  */
 @Composable
 private fun HomeTile(
@@ -207,18 +236,10 @@ private fun HomeTile(
     waitScore: Int?,
     tempoScore: Int?,
     onClick: () -> Unit,
-    highlighted: Boolean = false,
 ) {
     Card(
         onClick = onClick,
-        colors = CardDefaults.cardColors(
-            containerColor = if (highlighted) Color(0xFF33290E) else MaterialTheme.colorScheme.surfaceVariant,
-        ),
-        border = if (highlighted) {
-            androidx.compose.foundation.BorderStroke(1.dp, PianoPalette.expectedHalo.copy(alpha = 0.55f))
-        } else {
-            null
-        },
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
     ) {
         Column(
             modifier = Modifier.fillMaxWidth().padding(14.dp),
