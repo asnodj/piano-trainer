@@ -116,18 +116,23 @@ class SmfSongLoader {
     }
 
     /**
-     * Applies the sidecar fingering list to the sorted notes.
+     * Applies the sidecar fingering list to the sorted notes. The list may be
+     * shorter than the song (partially fingered pieces like Für Elise); 0 or
+     * any value outside 1..5 means "no fingering" for that note.
      *
      * @param notes Notes sorted by (start time, pitch).
      * @param metadata Sidecar metadata.
-     * @return Notes with fingering set when the list size matches, unchanged otherwise.
+     * @return Notes with fingering applied where authored.
      */
     private fun applyFingering(notes: List<SongNote>, metadata: SongMetadata): List<SongNote> {
         val fingering = metadata.fingering ?: return notes
-        if (fingering.size != notes.size) {
+        if (fingering.isEmpty()) {
             return notes
         }
-        return notes.mapIndexed { noteIndex, songNote -> songNote.copy(finger = fingering[noteIndex]) }
+        return notes.mapIndexed { noteIndex, songNote ->
+            val finger = fingering.getOrNull(noteIndex)
+            if (finger != null && finger in 1..5) songNote.copy(finger = finger) else songNote
+        }
     }
 
     /**

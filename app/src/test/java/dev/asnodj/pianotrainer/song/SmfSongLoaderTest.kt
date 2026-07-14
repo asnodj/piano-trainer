@@ -36,23 +36,23 @@ class SmfSongLoaderTest {
         // Prepare / Act
         val song = loadAsset("au_clair_de_la_lune")
 
-        // Assert
+        // Assert: 44 melody notes + 16 bass whole notes.
         assertEquals("Au clair de la lune", song.title)
-        assertEquals(44, song.notes.size)
+        assertEquals(60, song.notes.size)
     }
 
     @Test
-    fun `au clair de la lune starts with three C4 quarters at 100 bpm`() {
+    fun `au clair de la lune melody starts with three C4 quarters at 100 bpm`() {
         // Prepare / Act
         val song = loadAsset("au_clair_de_la_lune")
 
         // Assert
-        val firstNotes = song.notes.take(4)
-        assertEquals(listOf(60, 60, 60, 62), firstNotes.map { songNote -> songNote.midiNote })
-        assertEquals(0, firstNotes[0].startMs)
+        val melody = song.notes.filter { songNote -> songNote.hand == Hand.RIGHT }.take(4)
+        assertEquals(listOf(60, 60, 60, 62), melody.map { songNote -> songNote.midiNote })
+        assertEquals(0, melody[0].startMs)
         // Quarter note at 100 bpm = 600 ms.
-        assertNearMs(600, firstNotes[1].startMs)
-        assertNearMs(1200, firstNotes[2].startMs)
+        assertNearMs(600, melody[1].startMs)
+        assertNearMs(1200, melody[2].startMs)
     }
 
     @Test
@@ -68,25 +68,28 @@ class SmfSongLoaderTest {
     }
 
     @Test
-    fun `au clair de la lune carries authored fingering on every note`() {
+    fun `au clair de la lune carries authored fingering on every note of both hands`() {
         // Prepare / Act
         val song = loadAsset("au_clair_de_la_lune")
 
-        // Assert
+        // Assert: the generated sidecar fingers all 60 notes; at t=0 the notes
+        // sorted by pitch are the LH C3 bass (finger 2) then the RH C4 (thumb).
         assertTrue(song.notes.all { songNote -> songNote.finger != null })
-        assertEquals(1, song.notes.first().finger)
-        // Phrase B starts at note 22 with finger 5 on D4.
-        assertEquals(5, song.notes[22].finger)
-        assertEquals(62, song.notes[22].midiNote)
+        assertEquals(48, song.notes[0].midiNote)
+        assertEquals(2, song.notes[0].finger)
+        assertEquals(60, song.notes[1].midiNote)
+        assertEquals(1, song.notes[1].finger)
     }
 
     @Test
-    fun `au clair de la lune is right hand only`() {
+    fun `au clair de la lune now has a simplified left hand`() {
         // Prepare / Act
         val song = loadAsset("au_clair_de_la_lune")
 
-        // Assert
-        assertTrue(song.notes.all { songNote -> songNote.hand == Hand.RIGHT })
+        // Assert: 16 bass whole notes in a stationary G2..D3 position.
+        val bass = song.notes.filter { songNote -> songNote.hand == Hand.LEFT }
+        assertEquals(16, bass.size)
+        assertTrue(bass.all { songNote -> songNote.midiNote in 43..50 })
     }
 
     @Test
@@ -111,6 +114,16 @@ class SmfSongLoaderTest {
         val firstMelodyNotes = song.notes.filter { songNote -> songNote.hand == Hand.RIGHT }.take(2)
         assertEquals(listOf(76, 75), firstMelodyNotes.map { songNote -> songNote.midiNote })
         assertNotNull(song.notes.first().durationMs)
-        assertTrue(song.notes.first().finger == null)
+    }
+
+    @Test
+    fun `fur elise opening theme is fingered but the rest is not (partial fingering)`() {
+        // Prepare / Act
+        val song = loadAsset("fur_elise")
+
+        // Assert: classic 4-3 alternation on the opening E/D#, nothing at note 100.
+        assertEquals(4, song.notes[0].finger)
+        assertEquals(3, song.notes[1].finger)
+        assertTrue(song.notes[100].finger == null)
     }
 }

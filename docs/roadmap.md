@@ -1,6 +1,12 @@
 # Roadmap
 
 ## v1 — playable core (target: 2–3 evenings)
+*2026-07-14 late evening: content pass done — encoder rewritten (SMF format 1, one
+track per hand, rests, per-note fingering, sidecar generated in loader note order).
+All 4 comptines now have a simplified left hand (level-1 whole/half-note bass in a
+stationary position) with full fingering; Frère Jacques added (the low "ding" G3 is
+a left-hand thumb note); Für Elise opening theme fingered (first 40 notes, classic
+4-3 alternation + 5-2-1 arpeggios), rest of the piece pending.*
 1. **Project scaffold**: Kotlin + Compose, single module to start; adaptive layouts
    phone/tablet; two local profiles (dad / daughter, DataStore or Room).
    *2026-07-14: scaffold done, first `assembleDebug` green (placeholder screen only —

@@ -2,6 +2,8 @@
   "title": "Für Elise (Beethoven)",
   "barsPerSection": 4,
   "trackHands": ["right", "left"],
+  "fingering": [4, 3, 4, 3, 4, 2, 4, 3, 5, 1, 2, 1, 1, 2, 3, 5, 4, 2, 1, 1, 2, 4, 5, 5, 2, 1, 1, 4, 3, 4, 3, 4, 2, 4, 3, 5, 1, 2, 1, 1],
   "license": "Public Domain (Breitkopf & Härtel 1888 edition)",
-  "source": "https://www.mutopiaproject.org/ftp/BeethovenLv/WoO59/fur_Elise_WoO59/fur_Elise_WoO59.mid"
+  "source": "https://www.mutopiaproject.org/ftp/BeethovenLv/WoO59/fur_Elise_WoO59/fur_Elise_WoO59.mid",
+  "fingeringNote": "Opening theme only (first 40 notes), standard pedagogical fingering; the rest of the piece is unfingered for now"
 }
