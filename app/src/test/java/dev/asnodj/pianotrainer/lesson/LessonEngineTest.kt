@@ -114,6 +114,38 @@ class LessonEngineTest {
     }
 
     @Test
+    fun `accuracy stays at 100 percent without any wrong press`() {
+        // Prepare
+        val engine = LessonEngine(songOf(note(60, 0), note(62, 600)), HandMode.BOTH)
+
+        // Act
+        engine.onNoteOn(60)
+        engine.onNoteOn(62)
+
+        // Assert
+        assertEquals(100, engine.state.value.accuracyPercent)
+        assertEquals(0, engine.state.value.wrongPressCount)
+    }
+
+    @Test
+    fun `wrong presses lower the accuracy and survive group advances`() {
+        // Prepare: 2 notes; 2 wrong presses -> 2 / (2 + 2) = 50%.
+        val engine = LessonEngine(songOf(note(60, 0), note(62, 600)), HandMode.BOTH)
+
+        // Act
+        engine.onNoteOn(65)
+        engine.onNoteOn(60)
+        engine.onNoteOn(66)
+        engine.onNoteOn(62)
+
+        // Assert
+        val state = engine.state.value
+        assertTrue(state.finished)
+        assertEquals(2, state.wrongPressCount)
+        assertEquals(50, state.accuracyPercent)
+    }
+
+    @Test
     fun `right-hand mode drops left-hand notes`() {
         // Prepare
         val engine = LessonEngine(

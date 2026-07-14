@@ -139,9 +139,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
      */
     fun changeSpeed(factor: Float) {
         mutableSpeedFactor.value = factor
+        songPlayer.setSpeed(factor)
     }
 
-    /** Starts or stops the demo playback of the current lesson's song. */
+    /**
+     * Starts or stops the demo playback of the current lesson's song. Only the
+     * selected hand(s) are played, so the "listen" step matches exactly what
+     * the player is about to practice.
+     */
     fun togglePlayback() {
         if (songPlayer.isPlaying.value) {
             songPlayer.stop()
@@ -149,7 +154,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
         val currentScreen = mutableScreen.value
         if (currentScreen is Screen.Lesson) {
-            songPlayer.play(currentScreen.song.notes, mutableSpeedFactor.value)
+            val notesToPlay = when (mutableHandMode.value) {
+                HandMode.BOTH -> currentScreen.song.notes
+                HandMode.RIGHT -> currentScreen.song.notes.filter { songNote -> songNote.hand == Hand.RIGHT }
+                HandMode.LEFT -> currentScreen.song.notes.filter { songNote -> songNote.hand == Hand.LEFT }
+            }
+            songPlayer.play(notesToPlay, mutableSpeedFactor.value)
         }
     }
 

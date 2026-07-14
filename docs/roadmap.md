@@ -45,6 +45,13 @@
 - PianoBooster CC-BY beginner course as progression skeleton (credit required).
 
 ## v3+ — ideas
+- Key-press animations (particles/glow rising from keys, Rousseau-video style) —
+  user request 2026-07-14, low priority.
+- Microphone note detection as an optional wireless mode — user request 2026-07-14,
+  second phase. Reservation on record: mic detection is the #1 complaint across the
+  whole market (chords/octaves/latency); preferred wireless answer is a BLE MIDI
+  adapter on the USB TO HOST port (Yamaha UD-BT01 / CME WIDI Uhost), which Android
+  MIDI supports natively.
 - FluidSynth + GeneralUser GS / MuseScore General SF3 for better sound.
 - Notation bridge: mini-staff above the highway, fading note-name labels.
 - Semi-auto assist (app plays LH, player plays RH).

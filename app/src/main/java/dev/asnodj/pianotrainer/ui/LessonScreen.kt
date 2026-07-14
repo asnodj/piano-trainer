@@ -51,6 +51,7 @@ import com.composables.icons.lucide.Lucide
 import com.composables.icons.lucide.Play
 import com.composables.icons.lucide.RotateCcw
 import com.composables.icons.lucide.Square
+import com.composables.icons.lucide.Star
 import dev.asnodj.pianotrainer.R
 import dev.asnodj.pianotrainer.SPEED_OPTIONS
 import dev.asnodj.pianotrainer.lesson.HandMode
@@ -136,7 +137,11 @@ fun LessonScreen(
                     .padding(8.dp),
             )
             if (lessonState.finished && !isPlaying) {
-                FinishedOverlay(onRestart = onRestart, modifier = Modifier.fillMaxSize())
+                FinishedOverlay(
+                    accuracyPercent = lessonState.accuracyPercent,
+                    onRestart = onRestart,
+                    modifier = Modifier.fillMaxSize(),
+                )
             }
         }
         PianoKeyboard(
@@ -297,10 +302,25 @@ private fun HandSwitch(hand: Hand, active: Boolean, enabled: Boolean, onClick: (
 }
 
 /**
- * Celebration overlay shown when the song is completed.
+ * Celebration overlay shown when the song is completed: stars (3 from 95%
+ * accuracy, 2 from 80%, 1 below — never zero, soft-gate philosophy), the
+ * accuracy score and the restart button.
+ *
+ * @param accuracyPercent Final accuracy 0..100.
+ * @param onRestart Restart callback.
+ * @param modifier Layout modifier.
  */
 @Composable
-private fun FinishedOverlay(onRestart: () -> Unit, modifier: Modifier = Modifier) {
+private fun FinishedOverlay(
+    accuracyPercent: Int,
+    onRestart: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val earnedStars = when {
+        accuracyPercent >= 95 -> 3
+        accuracyPercent >= 80 -> 2
+        else -> 1
+    }
     Box(modifier = modifier.background(Color(0xB0000000))) {
         Column(
             modifier = Modifier.align(Alignment.Center),
@@ -310,6 +330,25 @@ private fun FinishedOverlay(onRestart: () -> Unit, modifier: Modifier = Modifier
             Text(
                 text = stringResource(R.string.lesson_finished),
                 style = MaterialTheme.typography.headlineLarge,
+                color = PianoPalette.ivory,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                repeat(3) { starIndex ->
+                    Icon(
+                        imageVector = Lucide.Star,
+                        contentDescription = null,
+                        tint = if (starIndex < earnedStars) {
+                            PianoPalette.expectedHalo
+                        } else {
+                            PianoPalette.ivoryDim.copy(alpha = 0.35f)
+                        },
+                        modifier = Modifier.size(40.dp),
+                    )
+                }
+            }
+            Text(
+                text = stringResource(R.string.lesson_score, accuracyPercent),
+                style = MaterialTheme.typography.titleMedium,
                 color = PianoPalette.ivory,
             )
             Button(onClick = onRestart) {

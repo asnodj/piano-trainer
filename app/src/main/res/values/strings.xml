@@ -14,6 +14,7 @@
     <string name="lesson_hand_left">Gauche</string>
     <string name="lesson_hand_both">Deux mains</string>
     <string name="lesson_finished">Bravo ! 🎉</string>
+    <string name="lesson_score">Précision : %1$d %%</string>
     <string name="lesson_restart">Recommencer</string>
     <string name="lesson_play">Écouter le morceau</string>
     <string name="lesson_stop">Arrêter l\'écoute</string>

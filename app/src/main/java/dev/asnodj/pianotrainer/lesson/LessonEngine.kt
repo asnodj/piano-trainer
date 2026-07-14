@@ -35,6 +35,8 @@ data class NoteGroup(
  * @property wrongHeld Wrong keys currently held down, for red feedback.
  * @property positionMs Song position the display is frozen at.
  * @property finished True when the whole song has been played.
+ * @property wrongPressCount Total wrong key presses since the lesson started.
+ * @property accuracyPercent Correct notes over total presses, 0..100.
  */
 data class LessonState(
     val groupIndex: Int,
@@ -44,6 +46,8 @@ data class LessonState(
     val wrongHeld: Set<Int>,
     val positionMs: Int,
     val finished: Boolean,
+    val wrongPressCount: Int,
+    val accuracyPercent: Int,
 )
 
 /**
@@ -64,8 +68,9 @@ class LessonEngine(song: Song, handMode: HandMode) {
 
     private val groups: List<NoteGroup> = buildGroups(filterByHand(song.notes, handMode))
     private val endPositionMs: Int = song.durationMs
+    private val totalNoteCount: Int = groups.sumOf { group -> group.notes.size }
 
-    private val mutableState = MutableStateFlow(stateAt(groupIndex = 0))
+    private val mutableState = MutableStateFlow(stateAt(groupIndex = 0, wrongPressCount = 0))
 
     /** Current lesson snapshot for the UI. */
     val state: StateFlow<LessonState> = mutableState.asStateFlow()
@@ -88,13 +93,17 @@ class LessonEngine(song: Song, handMode: HandMode) {
         if (note in current.expectedNotes) {
             val latched = current.correctlyPressed + note
             if (latched == current.expectedNotes) {
-                mutableState.value = stateAt(current.groupIndex + 1)
+                mutableState.value = stateAt(current.groupIndex + 1, current.wrongPressCount)
                     .copy(wrongHeld = current.wrongHeld)
             } else {
                 mutableState.value = current.copy(correctlyPressed = latched)
             }
         } else {
-            mutableState.value = current.copy(wrongHeld = current.wrongHeld + note)
+            mutableState.value = current.copy(
+                wrongHeld = current.wrongHeld + note,
+                wrongPressCount = current.wrongPressCount + 1,
+                accuracyPercent = accuracyOf(current.wrongPressCount + 1),
+            )
         }
     }
 
@@ -114,9 +123,10 @@ class LessonEngine(song: Song, handMode: HandMode) {
      * Builds the frozen state for a given group index.
      *
      * @param groupIndex Group to freeze on; past the last group means finished.
+     * @param wrongPressCount Wrong presses accumulated so far.
      * @return The corresponding lesson state.
      */
-    private fun stateAt(groupIndex: Int): LessonState {
+    private fun stateAt(groupIndex: Int, wrongPressCount: Int): LessonState {
         val finished = groupIndex >= groups.size
         return LessonState(
             groupIndex = groupIndex,
@@ -126,7 +136,22 @@ class LessonEngine(song: Song, handMode: HandMode) {
             wrongHeld = emptySet(),
             positionMs = if (finished) endPositionMs else groups[groupIndex].startMs,
             finished = finished,
+            wrongPressCount = wrongPressCount,
+            accuracyPercent = accuracyOf(wrongPressCount),
         )
+    }
+
+    /**
+     * Computes the accuracy: notes of the song over total presses needed.
+     *
+     * @param wrongPressCount Wrong presses so far.
+     * @return Percentage 0..100 (100 = no wrong press at all).
+     */
+    private fun accuracyOf(wrongPressCount: Int): Int {
+        if (totalNoteCount == 0) {
+            return 100
+        }
+        return (totalNoteCount * 100) / (totalNoteCount + wrongPressCount)
     }
 
     /**

@@ -23,6 +23,9 @@ class SongPlayer(private val scope: CoroutineScope) {
     private val midiDriver: MidiDriver = MidiDriver.getInstance()
     private var playbackJob: Job? = null
 
+    @Volatile
+    private var currentSpeedFactor: Float = 1.0f
+
     private val mutableIsPlaying = MutableStateFlow(false)
 
     /** True while the song is being played back. */
@@ -44,11 +47,12 @@ class SongPlayer(private val scope: CoroutineScope) {
      * audio can never drift from the display.
      *
      * @param notes Song notes sorted by start time.
-     * @param speedFactor Tempo multiplier (1.0 = authored tempo, 0.5 = half speed).
+     * @param speedFactor Initial tempo multiplier (adjustable live via [setSpeed]).
      * @param onFinished Called when the song reaches its end.
      */
     fun play(notes: List<SongNote>, speedFactor: Float, onFinished: () -> Unit = {}) {
         stop()
+        currentSpeedFactor = speedFactor
         midiDriver.start()
         mutableIsPlaying.value = true
         playbackJob = scope.launch {
@@ -61,10 +65,15 @@ class SongPlayer(private val scope: CoroutineScope) {
                 }.sortedWith(compareBy({ event -> event.atMs }, { event -> event.isNoteOn }))
 
                 val playbackStart = TimeSource.Monotonic.markNow()
+                // Song position is integrated tick by tick so the speed factor
+                // can change mid-playback without making the position jump.
+                var songPositionMs = 0.0
+                var previousElapsedMs = 0L
                 var nextEventIndex = 0
                 while (nextEventIndex < events.size) {
-                    val songPositionMs =
-                        (playbackStart.elapsedNow().inWholeMilliseconds * speedFactor).toInt()
+                    val elapsedMs = playbackStart.elapsedNow().inWholeMilliseconds
+                    songPositionMs += (elapsedMs - previousElapsedMs) * currentSpeedFactor
+                    previousElapsedMs = elapsedMs
                     while (nextEventIndex < events.size && events[nextEventIndex].atMs <= songPositionMs) {
                         val event = events[nextEventIndex]
                         if (event.isNoteOn) {
@@ -74,7 +83,7 @@ class SongPlayer(private val scope: CoroutineScope) {
                         }
                         nextEventIndex++
                     }
-                    mutablePositionMs.value = songPositionMs
+                    mutablePositionMs.value = songPositionMs.toInt()
                     delay(16)
                 }
             } finally {
@@ -83,6 +92,15 @@ class SongPlayer(private val scope: CoroutineScope) {
             }
             onFinished()
         }
+    }
+
+    /**
+     * Changes the tempo multiplier, effective immediately even mid-playback.
+     *
+     * @param speedFactor New tempo multiplier.
+     */
+    fun setSpeed(speedFactor: Float) {
+        currentSpeedFactor = speedFactor
     }
 
     /** Stops the playback and silences the synthesizer. */
