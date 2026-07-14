@@ -70,6 +70,8 @@ private const val LOOKAHEAD_MS = 4000f
  * @param lessonState Current engine snapshot.
  * @param noteGroups All groups of the lesson, for rendering upcoming notes.
  * @param handMode Currently practiced hand(s).
+ * @param leftHandAvailable True when the song has left-hand notes.
+ * @param rightHandAvailable True when the song has right-hand notes.
  * @param speedFactor Tempo multiplier for playback and scrolling.
  * @param isPlaying True while the demo playback runs.
  * @param playbackPositionMs Playback position driving the highway when playing.
@@ -85,6 +87,8 @@ fun LessonScreen(
     lessonState: LessonState,
     noteGroups: List<NoteGroup>,
     handMode: HandMode,
+    leftHandAvailable: Boolean,
+    rightHandAvailable: Boolean,
     speedFactor: Float,
     isPlaying: Boolean,
     playbackPositionMs: Int,
@@ -101,6 +105,8 @@ fun LessonScreen(
             songTitle = songTitle,
             lessonState = lessonState,
             handMode = handMode,
+            leftHandAvailable = leftHandAvailable,
+            rightHandAvailable = rightHandAvailable,
             speedFactor = speedFactor,
             isPlaying = isPlaying,
             onToggleHand = onToggleHand,
@@ -165,6 +171,8 @@ private fun LessonHeader(
     songTitle: String,
     lessonState: LessonState,
     handMode: HandMode,
+    leftHandAvailable: Boolean,
+    rightHandAvailable: Boolean,
     speedFactor: Float,
     isPlaying: Boolean,
     onToggleHand: (Hand) -> Unit,
@@ -204,11 +212,13 @@ private fun LessonHeader(
         HandSwitch(
             hand = Hand.LEFT,
             active = handMode != HandMode.RIGHT,
+            enabled = leftHandAvailable,
             onClick = { onToggleHand(Hand.LEFT) },
         )
         HandSwitch(
             hand = Hand.RIGHT,
             active = handMode != HandMode.LEFT,
+            enabled = rightHandAvailable,
             onClick = { onToggleHand(Hand.RIGHT) },
         )
     }
@@ -252,17 +262,20 @@ private fun formatSpeed(factor: Float): String {
 }
 
 /**
- * Icon-only hand switch, tinted with the hand's note color when active.
+ * Icon-only hand switch, tinted with the hand's note color when active and
+ * greyed out when the song has no notes for that hand.
  *
  * @param hand Hand this switch controls.
  * @param active Whether the hand is currently practiced.
+ * @param enabled False when the song has no notes for this hand.
  * @param onClick Toggle callback.
  */
 @Composable
-private fun HandSwitch(hand: Hand, active: Boolean, onClick: () -> Unit) {
+private fun HandSwitch(hand: Hand, active: Boolean, enabled: Boolean, onClick: () -> Unit) {
     FilterChip(
-        selected = active,
+        selected = active && enabled,
         onClick = onClick,
+        enabled = enabled,
         label = {},
         leadingIcon = {
             Icon(
@@ -270,7 +283,11 @@ private fun HandSwitch(hand: Hand, active: Boolean, onClick: () -> Unit) {
                 contentDescription = stringResource(
                     if (hand == Hand.LEFT) R.string.lesson_hand_left else R.string.lesson_hand_right
                 ),
-                tint = if (active) handColor(hand) else MaterialTheme.colorScheme.onSurfaceVariant,
+                tint = when {
+                    !enabled -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f)
+                    active -> handColor(hand)
+                    else -> MaterialTheme.colorScheme.onSurfaceVariant
+                },
                 modifier = Modifier
                     .size(20.dp)
                     .graphicsLayer(scaleX = if (hand == Hand.LEFT) -1f else 1f),
@@ -335,16 +352,19 @@ private fun NoteHighway(
     val textMeasurer = rememberTextMeasurer()
     val targetMs = if (isPlaying) playbackPositionMs else lessonState.positionMs
     val animatedPosition = remember { Animatable(targetMs.toFloat()) }
-    LaunchedEffect(targetMs, speedFactor) {
+    LaunchedEffect(targetMs, speedFactor, isPlaying) {
         val target = targetMs.toFloat()
-        if (target > animatedPosition.value) {
-            // Scroll at song tempo (scaled by the speed factor), capped so very
-            // long notes never stall the display for seconds.
-            val travelMs = ((target - animatedPosition.value) / speedFactor).toInt().coerceIn(120, 2000)
-            animatedPosition.animateTo(target, tween(durationMillis = travelMs, easing = LinearEasing))
-        } else {
+        when {
+            // Playback publishes a continuous ~60 Hz position: follow it directly.
+            isPlaying -> animatedPosition.snapTo(target)
+            target > animatedPosition.value -> {
+                // Wait-mode advance: scroll at song tempo (scaled by the speed
+                // factor), capped so very long notes never stall for seconds.
+                val travelMs = ((target - animatedPosition.value) / speedFactor).toInt().coerceIn(120, 2000)
+                animatedPosition.animateTo(target, tween(durationMillis = travelMs, easing = LinearEasing))
+            }
             // Restart, hand-mode change or playback stop: jump back silently.
-            animatedPosition.snapTo(target)
+            else -> animatedPosition.snapTo(target)
         }
     }
 

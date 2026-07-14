@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import org.billthefarmer.mididriver.MidiDriver
+import kotlin.time.TimeSource
 
 /**
  * Plays a song through the built-in Sonivox synthesizer (mididriver) for the
@@ -32,13 +33,19 @@ class SongPlayer(private val scope: CoroutineScope) {
     /** Current playback position in song milliseconds. */
     val positionMs: StateFlow<Int> = mutablePositionMs.asStateFlow()
 
+    /** One scheduled MIDI event of the playback. */
+    private data class PlaybackEvent(val atMs: Int, val note: Int, val isNoteOn: Boolean)
+
     /**
      * Starts playing the given notes from the beginning, stopping any playback
-     * in progress.
+     * in progress. Everything is driven by a monotonic wall clock: the position
+     * flow advances continuously (~60 Hz) so the note highway scrolls smoothly
+     * through sustained notes, and MIDI events fire off the same clock so the
+     * audio can never drift from the display.
      *
      * @param notes Song notes sorted by start time.
      * @param speedFactor Tempo multiplier (1.0 = authored tempo, 0.5 = half speed).
-     * @param onFinished Called on the main thread when the song reaches its end.
+     * @param onFinished Called when the song reaches its end.
      */
     fun play(notes: List<SongNote>, speedFactor: Float, onFinished: () -> Unit = {}) {
         stop()
@@ -46,30 +53,29 @@ class SongPlayer(private val scope: CoroutineScope) {
         mutableIsPlaying.value = true
         playbackJob = scope.launch {
             try {
-                var currentMs = 0
-                val pendingOffs = mutableListOf<Pair<Int, Int>>() // (offAtMs, note)
-                notes.forEach { songNote ->
-                    // Release every note ending before this one starts.
-                    pendingOffs.sortBy { (offAtMs, _) -> offAtMs }
-                    while (pendingOffs.isNotEmpty() && pendingOffs.first().first <= songNote.startMs) {
-                        val (offAtMs, note) = pendingOffs.removeAt(0)
-                        delayScaled(offAtMs - currentMs, speedFactor)
-                        currentMs = offAtMs
-                        sendNoteOff(note)
-                        mutablePositionMs.value = currentMs
+                val events = buildList {
+                    notes.forEach { songNote ->
+                        add(PlaybackEvent(songNote.startMs, songNote.midiNote, isNoteOn = true))
+                        add(PlaybackEvent(songNote.startMs + songNote.durationMs, songNote.midiNote, isNoteOn = false))
                     }
-                    delayScaled(songNote.startMs - currentMs, speedFactor)
-                    currentMs = songNote.startMs
-                    sendNoteOn(songNote.midiNote)
-                    mutablePositionMs.value = currentMs
-                    pendingOffs.add((songNote.startMs + songNote.durationMs) to songNote.midiNote)
-                }
-                pendingOffs.sortBy { (offAtMs, _) -> offAtMs }
-                pendingOffs.forEach { (offAtMs, note) ->
-                    delayScaled(offAtMs - currentMs, speedFactor)
-                    currentMs = offAtMs
-                    sendNoteOff(note)
-                    mutablePositionMs.value = currentMs
+                }.sortedWith(compareBy({ event -> event.atMs }, { event -> event.isNoteOn }))
+
+                val playbackStart = TimeSource.Monotonic.markNow()
+                var nextEventIndex = 0
+                while (nextEventIndex < events.size) {
+                    val songPositionMs =
+                        (playbackStart.elapsedNow().inWholeMilliseconds * speedFactor).toInt()
+                    while (nextEventIndex < events.size && events[nextEventIndex].atMs <= songPositionMs) {
+                        val event = events[nextEventIndex]
+                        if (event.isNoteOn) {
+                            sendNoteOn(event.note)
+                        } else {
+                            sendNoteOff(event.note)
+                        }
+                        nextEventIndex++
+                    }
+                    mutablePositionMs.value = songPositionMs
+                    delay(16)
                 }
             } finally {
                 allNotesOff()
@@ -92,18 +98,6 @@ class SongPlayer(private val scope: CoroutineScope) {
     fun release() {
         stop()
         midiDriver.stop()
-    }
-
-    /**
-     * Waits the given song duration adjusted by the tempo multiplier.
-     *
-     * @param songMs Duration in song milliseconds (may be zero or negative).
-     * @param speedFactor Tempo multiplier.
-     */
-    private suspend fun delayScaled(songMs: Int, speedFactor: Float) {
-        if (songMs > 0) {
-            delay((songMs / speedFactor).toLong())
-        }
     }
 
     private fun sendNoteOn(note: Int) {

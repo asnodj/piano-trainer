@@ -12,9 +12,11 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.asnodj.pianotrainer.midi.MidiConnectionState
+import dev.asnodj.pianotrainer.song.Hand
 import dev.asnodj.pianotrainer.ui.DiscoveryScreen
 import dev.asnodj.pianotrainer.ui.HomeScreen
 import dev.asnodj.pianotrainer.ui.LessonScreen
@@ -74,11 +76,16 @@ fun AppRoot(viewModel: MainViewModel = viewModel()) {
                 val engine = lessonEngine
                 if (engine != null) {
                     val lessonState by engine.state.collectAsState()
+                    val availableHands = remember(currentScreen.song) {
+                        currentScreen.song.notes.map { songNote -> songNote.hand }.toSet()
+                    }
                     LessonScreen(
                         songTitle = currentScreen.song.title,
                         lessonState = lessonState,
                         noteGroups = engine.noteGroups,
                         handMode = handMode,
+                        leftHandAvailable = Hand.LEFT in availableHands,
+                        rightHandAvailable = Hand.RIGHT in availableHands,
                         speedFactor = speedFactor,
                         isPlaying = isPlaying,
                         playbackPositionMs = playbackPositionMs,
