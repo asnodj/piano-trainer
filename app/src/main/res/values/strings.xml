@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Piano Trainer</string>
+    <string name="keyboard_disconnected">Branche le piano pour commencer 🎹</string>
+    <string name="keyboard_connecting">Connexion au clavier…</string>
+    <string name="keyboard_connected">Clavier connecté : %1$s</string>
+    <string name="discovery_hint">Joue une note sur le piano !</string>
+</resources>
