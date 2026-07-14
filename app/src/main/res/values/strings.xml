@@ -5,4 +5,19 @@
     <string name="keyboard_connecting">Connexion au clavier…</string>
     <string name="keyboard_connected">Clavier connecté : %1$s</string>
     <string name="discovery_hint">Joue une note sur le piano !</string>
+    <string name="home_discovery_title">Mode découverte</string>
+    <string name="home_discovery_subtitle">Le clavier s\'allume quand tu joues</string>
+    <string name="home_song_subtitle">%1$d notes · %2$d sections</string>
+    <string name="lesson_back">←</string>
+    <string name="lesson_progress">%1$d / %2$d</string>
+    <string name="lesson_hand_right">Droite</string>
+    <string name="lesson_hand_left">Gauche</string>
+    <string name="lesson_hand_both">Deux mains</string>
+    <string name="lesson_finished">Bravo ! 🎉</string>
+    <string name="lesson_restart">Recommencer</string>
+    <string name="lesson_play">Écouter le morceau</string>
+    <string name="lesson_stop">Arrêter l\'écoute</string>
+    <string name="lesson_speed">Tempo</string>
+    <string name="hand_map_left">Gauche</string>
+    <string name="hand_map_right">Droite</string>
 </resources>

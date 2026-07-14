@@ -45,6 +45,9 @@ kotlin {
 
 dependencies {
     implementation(libs.ktmidi)
+    implementation(libs.composables.icons.lucide)
+    // mididriver's JitPack builds are all broken -> bundled AAR from its GitHub releases.
+    implementation(files("libs/mididriver-1.29.aar"))
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)

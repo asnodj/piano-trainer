@@ -1,0 +1,422 @@
+package dev.asnodj.pianotrainer.ui
+
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.Button
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.TextMeasurer
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.unit.dp
+import com.composables.icons.lucide.ArrowLeft
+import com.composables.icons.lucide.Gauge
+import com.composables.icons.lucide.Hand
+import com.composables.icons.lucide.Lucide
+import com.composables.icons.lucide.Play
+import com.composables.icons.lucide.RotateCcw
+import com.composables.icons.lucide.Square
+import dev.asnodj.pianotrainer.R
+import dev.asnodj.pianotrainer.SPEED_OPTIONS
+import dev.asnodj.pianotrainer.lesson.HandMode
+import dev.asnodj.pianotrainer.lesson.LessonState
+import dev.asnodj.pianotrainer.lesson.NoteGroup
+import dev.asnodj.pianotrainer.song.Hand
+import dev.asnodj.pianotrainer.song.SongNote
+
+/** How far ahead (in song ms) the note highway shows upcoming notes. */
+private const val LOOKAHEAD_MS = 4000f
+
+/**
+ * Lesson screen: falling-notes highway above the virtual keyboard. Frozen in
+ * wait mode by default; scrolls with the audio during demo playback.
+ *
+ * @param songTitle Title shown in the header.
+ * @param lessonState Current engine snapshot.
+ * @param noteGroups All groups of the lesson, for rendering upcoming notes.
+ * @param handMode Currently practiced hand(s).
+ * @param speedFactor Tempo multiplier for playback and scrolling.
+ * @param isPlaying True while the demo playback runs.
+ * @param playbackPositionMs Playback position driving the highway when playing.
+ * @param onToggleHand Called when a hand switch is tapped.
+ * @param onSpeedChange Called with the picked tempo multiplier.
+ * @param onTogglePlayback Called when the play/stop button is tapped.
+ * @param onRestart Called when the player restarts the song.
+ * @param onBack Called to leave the lesson.
+ */
+@Composable
+fun LessonScreen(
+    songTitle: String,
+    lessonState: LessonState,
+    noteGroups: List<NoteGroup>,
+    handMode: HandMode,
+    speedFactor: Float,
+    isPlaying: Boolean,
+    playbackPositionMs: Int,
+    onToggleHand: (Hand) -> Unit,
+    onSpeedChange: (Float) -> Unit,
+    onTogglePlayback: () -> Unit,
+    onRestart: () -> Unit,
+    onBack: () -> Unit,
+) {
+    val expectedKeys = if (isPlaying) emptyMap() else expectedKeysOf(lessonState, noteGroups)
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        LessonHeader(
+            songTitle = songTitle,
+            lessonState = lessonState,
+            handMode = handMode,
+            speedFactor = speedFactor,
+            isPlaying = isPlaying,
+            onToggleHand = onToggleHand,
+            onSpeedChange = onSpeedChange,
+            onTogglePlayback = onTogglePlayback,
+            onBack = onBack,
+        )
+        LinearProgressIndicator(
+            progress = {
+                if (lessonState.totalGroups == 0) 0f
+                else lessonState.groupIndex.toFloat() / lessonState.totalGroups
+            },
+            modifier = Modifier.fillMaxWidth().height(4.dp),
+        )
+        Box(modifier = Modifier.fillMaxWidth().weight(0.62f)) {
+            NoteHighway(
+                lessonState = lessonState,
+                noteGroups = noteGroups,
+                speedFactor = speedFactor,
+                isPlaying = isPlaying,
+                playbackPositionMs = playbackPositionMs,
+                modifier = Modifier.fillMaxSize(),
+            )
+            HandMapCard(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(8.dp),
+            )
+            if (lessonState.finished && !isPlaying) {
+                FinishedOverlay(onRestart = onRestart, modifier = Modifier.fillMaxSize())
+            }
+        }
+        PianoKeyboard(
+            pressedNotes = lessonState.correctlyPressed,
+            expectedKeys = expectedKeys,
+            wrongNotes = lessonState.wrongHeld,
+            modifier = Modifier.fillMaxWidth().weight(0.38f),
+        )
+    }
+}
+
+/**
+ * Builds the wait-mode hints of the current group (hand + finger per key).
+ *
+ * @param lessonState Current engine snapshot.
+ * @param noteGroups All lesson groups.
+ * @return Expected keys of the frozen group, empty when finished.
+ */
+private fun expectedKeysOf(lessonState: LessonState, noteGroups: List<NoteGroup>): Map<Int, ExpectedKey> {
+    val currentGroup = noteGroups.getOrNull(lessonState.groupIndex) ?: return emptyMap()
+    return currentGroup.notes.associate { songNote ->
+        songNote.midiNote to ExpectedKey(hand = songNote.hand, finger = songNote.finger)
+    }
+}
+
+/**
+ * Header row: back, title + progress, play/stop, tempo menu and one switch per
+ * hand (both on = both hands; the last one cannot be turned off).
+ */
+@Composable
+private fun LessonHeader(
+    songTitle: String,
+    lessonState: LessonState,
+    handMode: HandMode,
+    speedFactor: Float,
+    isPlaying: Boolean,
+    onToggleHand: (Hand) -> Unit,
+    onSpeedChange: (Float) -> Unit,
+    onTogglePlayback: () -> Unit,
+    onBack: () -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        IconButton(onClick = onBack) {
+            Icon(
+                imageVector = Lucide.ArrowLeft,
+                contentDescription = stringResource(R.string.lesson_back),
+            )
+        }
+        Column(modifier = Modifier.weight(1f)) {
+            Text(text = songTitle, style = MaterialTheme.typography.titleMedium)
+            Text(
+                text = stringResource(R.string.lesson_progress, lessonState.groupIndex, lessonState.totalGroups),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        IconButton(onClick = onTogglePlayback) {
+            Icon(
+                imageVector = if (isPlaying) Lucide.Square else Lucide.Play,
+                contentDescription = stringResource(
+                    if (isPlaying) R.string.lesson_stop else R.string.lesson_play
+                ),
+                tint = PianoPalette.expectedHalo,
+            )
+        }
+        SpeedMenu(speedFactor = speedFactor, onSpeedChange = onSpeedChange)
+        HandSwitch(
+            hand = Hand.LEFT,
+            active = handMode != HandMode.RIGHT,
+            onClick = { onToggleHand(Hand.LEFT) },
+        )
+        HandSwitch(
+            hand = Hand.RIGHT,
+            active = handMode != HandMode.LEFT,
+            onClick = { onToggleHand(Hand.RIGHT) },
+        )
+    }
+}
+
+/**
+ * Tempo selector: a compact "1×" button opening the speed menu.
+ */
+@Composable
+private fun SpeedMenu(speedFactor: Float, onSpeedChange: (Float) -> Unit) {
+    var menuOpen by remember { mutableStateOf(false) }
+    Box {
+        TextButton(onClick = { menuOpen = true }) {
+            Icon(
+                imageVector = Lucide.Gauge,
+                contentDescription = stringResource(R.string.lesson_speed),
+                modifier = Modifier.size(18.dp),
+            )
+            Text(text = formatSpeed(speedFactor), modifier = Modifier.padding(start = 6.dp))
+        }
+        DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+            SPEED_OPTIONS.forEach { option ->
+                DropdownMenuItem(
+                    text = { Text(text = formatSpeed(option)) },
+                    onClick = {
+                        menuOpen = false
+                        onSpeedChange(option)
+                    },
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Formats a tempo multiplier ("0.75" -> "0,75×", "1.0" -> "1×").
+ */
+private fun formatSpeed(factor: Float): String {
+    val text = if (factor % 1f == 0f) factor.toInt().toString() else factor.toString().replace('.', ',')
+    return "$text×"
+}
+
+/**
+ * Icon-only hand switch, tinted with the hand's note color when active.
+ *
+ * @param hand Hand this switch controls.
+ * @param active Whether the hand is currently practiced.
+ * @param onClick Toggle callback.
+ */
+@Composable
+private fun HandSwitch(hand: Hand, active: Boolean, onClick: () -> Unit) {
+    FilterChip(
+        selected = active,
+        onClick = onClick,
+        label = {},
+        leadingIcon = {
+            Icon(
+                imageVector = Lucide.Hand,
+                contentDescription = stringResource(
+                    if (hand == Hand.LEFT) R.string.lesson_hand_left else R.string.lesson_hand_right
+                ),
+                tint = if (active) handColor(hand) else MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier
+                    .size(20.dp)
+                    .graphicsLayer(scaleX = if (hand == Hand.LEFT) -1f else 1f),
+            )
+        },
+    )
+}
+
+/**
+ * Celebration overlay shown when the song is completed.
+ */
+@Composable
+private fun FinishedOverlay(onRestart: () -> Unit, modifier: Modifier = Modifier) {
+    Box(modifier = modifier.background(Color(0xB0000000))) {
+        Column(
+            modifier = Modifier.align(Alignment.Center),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Text(
+                text = stringResource(R.string.lesson_finished),
+                style = MaterialTheme.typography.headlineLarge,
+                color = PianoPalette.ivory,
+            )
+            Button(onClick = onRestart) {
+                Icon(
+                    imageVector = Lucide.RotateCcw,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                )
+                Text(
+                    text = stringResource(R.string.lesson_restart),
+                    modifier = Modifier.padding(start = 8.dp),
+                )
+            }
+        }
+    }
+}
+
+/**
+ * The falling-notes highway. In wait mode the position is frozen at the
+ * current group and advances at song tempo (scaled by the speed factor) when
+ * the player hits the right key, so long notes keep sliding below the line for
+ * their whole duration. During demo playback the highway follows the audio.
+ *
+ * @param lessonState Current engine snapshot.
+ * @param noteGroups All lesson groups.
+ * @param speedFactor Tempo multiplier.
+ * @param isPlaying True while the demo playback runs.
+ * @param playbackPositionMs Audio position when playing.
+ * @param modifier Layout modifier.
+ */
+@Composable
+private fun NoteHighway(
+    lessonState: LessonState,
+    noteGroups: List<NoteGroup>,
+    speedFactor: Float,
+    isPlaying: Boolean,
+    playbackPositionMs: Int,
+    modifier: Modifier = Modifier,
+) {
+    val textMeasurer = rememberTextMeasurer()
+    val targetMs = if (isPlaying) playbackPositionMs else lessonState.positionMs
+    val animatedPosition = remember { Animatable(targetMs.toFloat()) }
+    LaunchedEffect(targetMs, speedFactor) {
+        val target = targetMs.toFloat()
+        if (target > animatedPosition.value) {
+            // Scroll at song tempo (scaled by the speed factor), capped so very
+            // long notes never stall the display for seconds.
+            val travelMs = ((target - animatedPosition.value) / speedFactor).toInt().coerceIn(120, 2000)
+            animatedPosition.animateTo(target, tween(durationMillis = travelMs, easing = LinearEasing))
+        } else {
+            // Restart, hand-mode change or playback stop: jump back silently.
+            animatedPosition.snapTo(target)
+        }
+    }
+
+    Canvas(modifier = modifier.clipToBounds()) {
+        drawRect(color = PianoPalette.highway, size = size)
+
+        noteGroups.forEachIndexed { groupIndex, group ->
+            group.notes.forEach { songNote ->
+                val relativeStartMs = songNote.startMs - animatedPosition.value
+                if (relativeStartMs <= LOOKAHEAD_MS) {
+                    drawFallingNote(
+                        textMeasurer = textMeasurer,
+                        songNote = songNote,
+                        relativeStartMs = relativeStartMs,
+                        isExpected = !isPlaying && groupIndex == lessonState.groupIndex,
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Draws one falling note colored by hand, with the amber halo and fingering
+ * badge when it is the note to play.
+ *
+ * @param textMeasurer Shared measurer for badge digits.
+ * @param songNote The note to draw.
+ * @param relativeStartMs Note start relative to the current scroll position.
+ * @param isExpected True when the note belongs to the frozen group.
+ */
+private fun DrawScope.drawFallingNote(
+    textMeasurer: TextMeasurer,
+    songNote: SongNote,
+    relativeStartMs: Float,
+    isExpected: Boolean,
+) {
+    val noteLeft = keyLeftFraction(songNote.midiNote) * size.width
+    val noteWidth = keyWidthFraction(songNote.midiNote) * size.width
+    val noteBottom = size.height - relativeStartMs / LOOKAHEAD_MS * size.height
+    val noteHeight = songNote.durationMs / LOOKAHEAD_MS * size.height
+
+    val topLeft = Offset(noteLeft + 1f, noteBottom - noteHeight)
+    val noteSize = Size(noteWidth - 2f, noteHeight - 3f)
+    if (topLeft.y + noteSize.height < 0f || topLeft.y > size.height) {
+        return
+    }
+
+    drawRoundRect(
+        color = handColor(songNote.hand),
+        topLeft = topLeft,
+        size = noteSize,
+        cornerRadius = CornerRadius(8f, 8f),
+    )
+    if (isExpected) {
+        drawRoundRect(
+            color = PianoPalette.expectedHalo,
+            topLeft = topLeft,
+            size = noteSize,
+            cornerRadius = CornerRadius(8f, 8f),
+            style = Stroke(width = 5f),
+        )
+        if (songNote.finger != null) {
+            drawFingerBadge(
+                textMeasurer = textMeasurer,
+                finger = songNote.finger,
+                center = Offset(
+                    topLeft.x + noteSize.width / 2f,
+                    (topLeft.y + noteSize.height - noteSize.width * 0.5f).coerceAtLeast(noteSize.width * 0.5f),
+                ),
+                radius = noteSize.width * 0.36f,
+            )
+        }
+    }
+}

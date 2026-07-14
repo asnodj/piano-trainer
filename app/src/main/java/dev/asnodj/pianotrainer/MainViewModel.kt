@@ -3,20 +3,44 @@ package dev.asnodj.pianotrainer
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import dev.asnodj.pianotrainer.audio.SongPlayer
+import dev.asnodj.pianotrainer.lesson.HandMode
+import dev.asnodj.pianotrainer.lesson.LessonEngine
 import dev.asnodj.pianotrainer.midi.MidiConnectionState
 import dev.asnodj.pianotrainer.midi.MidiInputManager
+import dev.asnodj.pianotrainer.song.Hand
+import dev.asnodj.pianotrainer.song.Song
+import dev.asnodj.pianotrainer.song.SongRepository
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.scan
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
+
+/** Screens of the app (state-based navigation, no nav library needed yet). */
+sealed interface Screen {
+    data object Home : Screen
+    data object Discovery : Screen
+    data class Lesson(val song: Song) : Screen
+}
+
+/** Available tempo multipliers for playback and wait-mode scrolling. */
+val SPEED_OPTIONS = listOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f)
 
 /**
- * App-level state holder: owns the MIDI input manager and folds its raw note
- * events into UI-ready state (currently-pressed keys).
+ * App-level state holder: owns the MIDI input manager, the bundled songs, the
+ * demo player and the lesson engine of the current lesson, and routes between
+ * screens.
  */
 class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val midiInputManager = MidiInputManager(application)
+    private val songRepository = SongRepository(application)
+    private val songPlayer = SongPlayer(viewModelScope)
 
     /** Keyboard connection status for the UI. */
     val connectionState: StateFlow<MidiConnectionState> = midiInputManager.connectionState
@@ -32,11 +56,146 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptySet())
 
+    private val mutableSongs = MutableStateFlow<List<Song>>(emptyList())
+
+    /** Bundled songs, easiest first. */
+    val songs: StateFlow<List<Song>> = mutableSongs.asStateFlow()
+
+    private val mutableScreen = MutableStateFlow<Screen>(Screen.Home)
+
+    /** Currently displayed screen. */
+    val screen: StateFlow<Screen> = mutableScreen.asStateFlow()
+
+    private val mutableLessonEngine = MutableStateFlow<LessonEngine?>(null)
+
+    /** Engine of the lesson in progress, null outside lessons. */
+    val lessonEngine: StateFlow<LessonEngine?> = mutableLessonEngine.asStateFlow()
+
+    private val mutableHandMode = MutableStateFlow(HandMode.RIGHT)
+
+    /** Hand(s) currently practiced in the lesson. */
+    val handMode: StateFlow<HandMode> = mutableHandMode.asStateFlow()
+
+    private val mutableSpeedFactor = MutableStateFlow(1.0f)
+
+    /** Tempo multiplier applied to playback and wait-mode scrolling. */
+    val speedFactor: StateFlow<Float> = mutableSpeedFactor.asStateFlow()
+
+    /** True while the demo playback is running. */
+    val isPlaying: StateFlow<Boolean> = songPlayer.isPlaying
+
+    /** Demo playback position, drives the highway while playing. */
+    val playbackPositionMs: StateFlow<Int> = songPlayer.positionMs
+
+    private var lessonInputJob: Job? = null
+
     init {
         midiInputManager.start()
+        viewModelScope.launch(Dispatchers.IO) {
+            mutableSongs.value = songRepository.loadBundledSongs()
+        }
+    }
+
+    /** Opens the discovery screen. */
+    fun openDiscovery() {
+        mutableScreen.value = Screen.Discovery
+    }
+
+    /**
+     * Opens a song in lesson mode with the current hand mode.
+     *
+     * @param song Song to practice.
+     */
+    fun openLesson(song: Song) {
+        mutableScreen.value = Screen.Lesson(song)
+        startEngine(song)
+    }
+
+    /**
+     * Toggles one hand on/off. Both hands active means HandMode.BOTH; the last
+     * active hand cannot be turned off. Restarts the lesson on change.
+     *
+     * @param hand Hand whose switch was tapped.
+     */
+    fun toggleHand(hand: Hand) {
+        val current = mutableHandMode.value
+        val next = when {
+            current == HandMode.BOTH && hand == Hand.LEFT -> HandMode.RIGHT
+            current == HandMode.BOTH && hand == Hand.RIGHT -> HandMode.LEFT
+            current == HandMode.RIGHT && hand == Hand.LEFT -> HandMode.BOTH
+            current == HandMode.LEFT && hand == Hand.RIGHT -> HandMode.BOTH
+            else -> current // Turning off the last active hand: refused.
+        }
+        if (next != current) {
+            mutableHandMode.value = next
+            restartLesson()
+        }
+    }
+
+    /**
+     * Changes the tempo multiplier.
+     *
+     * @param factor One of [SPEED_OPTIONS].
+     */
+    fun changeSpeed(factor: Float) {
+        mutableSpeedFactor.value = factor
+    }
+
+    /** Starts or stops the demo playback of the current lesson's song. */
+    fun togglePlayback() {
+        if (songPlayer.isPlaying.value) {
+            songPlayer.stop()
+            return
+        }
+        val currentScreen = mutableScreen.value
+        if (currentScreen is Screen.Lesson) {
+            songPlayer.play(currentScreen.song.notes, mutableSpeedFactor.value)
+        }
+    }
+
+    /** Restarts the current lesson from the beginning. */
+    fun restartLesson() {
+        val currentScreen = mutableScreen.value
+        if (currentScreen is Screen.Lesson) {
+            startEngine(currentScreen.song)
+        }
+    }
+
+    /** Returns to the home screen and stops the current lesson if any. */
+    fun goHome() {
+        songPlayer.stop()
+        lessonInputJob?.cancel()
+        lessonInputJob = null
+        mutableLessonEngine.value = null
+        mutableScreen.value = Screen.Home
+    }
+
+    /**
+     * Creates a fresh engine for the song and plugs the MIDI stream into it.
+     * Keyboard input is ignored while the demo playback is running.
+     *
+     * @param song Song to practice.
+     */
+    private fun startEngine(song: Song) {
+        lessonInputJob?.cancel()
+        val engine = LessonEngine(song, mutableHandMode.value)
+        mutableLessonEngine.value = engine
+        lessonInputJob = viewModelScope.launch {
+            midiInputManager.noteEvents.collect { noteEvent ->
+                if (songPlayer.isPlaying.value) {
+                    return@collect
+                }
+                if (noteEvent.isNoteOn) {
+                    engine.onNoteOn(noteEvent.note)
+                } else {
+                    engine.onNoteOff(noteEvent.note)
+                }
+            }
+        }
     }
 
     override fun onCleared() {
+        songPlayer.release()
         midiInputManager.stop()
     }
 }
