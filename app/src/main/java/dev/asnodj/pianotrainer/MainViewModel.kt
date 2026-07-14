@@ -9,14 +9,18 @@ import dev.asnodj.pianotrainer.lesson.LessonEngine
 import dev.asnodj.pianotrainer.lesson.TempoEngine
 import dev.asnodj.pianotrainer.midi.MidiConnectionState
 import dev.asnodj.pianotrainer.midi.MidiInputManager
+import dev.asnodj.pianotrainer.profile.PROFILES
+import dev.asnodj.pianotrainer.profile.ProfileRepository
 import dev.asnodj.pianotrainer.song.Hand
 import dev.asnodj.pianotrainer.song.Song
 import dev.asnodj.pianotrainer.song.SongNote
 import dev.asnodj.pianotrainer.song.SongRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -57,6 +61,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val midiInputManager = MidiInputManager(application)
     private val songRepository = SongRepository(application)
     private val songPlayer = SongPlayer(viewModelScope)
+    private val profileRepository = ProfileRepository(application)
 
     /** Keyboard connection status for the UI. */
     val connectionState: StateFlow<MidiConnectionState> = midiInputManager.connectionState
@@ -118,8 +123,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     /** True when the app plays the other hand as accompaniment (semi-auto). */
     val semiAutoEnabled: StateFlow<Boolean> = mutableSemiAutoEnabled.asStateFlow()
 
+    /** Id of the active family profile. */
+    val selectedProfileId: StateFlow<String> = profileRepository.selectedProfileId
+        .stateIn(viewModelScope, SharingStarted.Eagerly, PROFILES.first().id)
+
+    /** Best scores of the active profile, keyed by "songId/mode". */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val bestScores: StateFlow<Map<String, Int>> = profileRepository.selectedProfileId
+        .flatMapLatest { profileId -> profileRepository.bestScores(profileId) }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyMap())
+
     private var lessonInputJob: Job? = null
     private var accompanimentJob: Job? = null
+    private var scoreSaveJob: Job? = null
     private var tempoClockJob: Job? = null
 
     init {
@@ -132,6 +148,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     /** Opens the discovery screen. */
     fun openDiscovery() {
         mutableScreen.value = Screen.Discovery
+    }
+
+    /**
+     * Switches the active family profile.
+     *
+     * @param profileId One of the [PROFILES] ids.
+     */
+    fun selectProfile(profileId: String) {
+        viewModelScope.launch {
+            profileRepository.selectProfile(profileId)
+        }
     }
 
     /**
@@ -286,6 +313,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 engine.advanceTo(positionMs)
                 delay(16)
             }
+            if (engine.state.value.finished) {
+                profileRepository.saveBestScore(
+                    profileId = selectedProfileId.value,
+                    songId = song.id,
+                    mode = "tempo",
+                    score = engine.state.value.scorePercent,
+                )
+            }
         }
     }
 
@@ -345,8 +380,24 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private fun startEngine(song: Song) {
         lessonInputJob?.cancel()
         accompanimentJob?.cancel()
+        scoreSaveJob?.cancel()
         val engine = LessonEngine(song, mutableHandMode.value)
         mutableLessonEngine.value = engine
+        // Persist the best accuracy when the wait-mode run completes.
+        scoreSaveJob = viewModelScope.launch {
+            engine.state.map { lessonState -> lessonState.finished }
+                .distinctUntilChanged()
+                .collect { finished ->
+                    if (finished) {
+                        profileRepository.saveBestScore(
+                            profileId = selectedProfileId.value,
+                            songId = song.id,
+                            mode = "wait",
+                            score = engine.state.value.accuracyPercent,
+                        )
+                    }
+                }
+        }
         lessonInputJob = viewModelScope.launch {
             midiInputManager.noteEvents.collect { noteEvent ->
                 if (songPlayer.isPlaying.value) {

@@ -57,6 +57,8 @@ fun AppRoot(viewModel: MainViewModel = viewModel()) {
     val practiceMode by viewModel.practiceMode.collectAsState()
     val tempoEngine by viewModel.tempoEngine.collectAsState()
     val semiAutoEnabled by viewModel.semiAutoEnabled.collectAsState()
+    val selectedProfileId by viewModel.selectedProfileId.collectAsState()
+    val bestScores by viewModel.bestScores.collectAsState()
 
     BackHandler(enabled = screen != Screen.Home) {
         viewModel.goHome()
@@ -67,6 +69,9 @@ fun AppRoot(viewModel: MainViewModel = viewModel()) {
             Screen.Home -> HomeScreen(
                 connectionState = connectionState,
                 songs = songs,
+                selectedProfileId = selectedProfileId,
+                bestScores = bestScores,
+                onSelectProfile = viewModel::selectProfile,
                 onOpenDiscovery = viewModel::openDiscovery,
                 onOpenSong = viewModel::openLesson,
             )

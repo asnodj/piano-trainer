@@ -5,6 +5,11 @@
     <string name="keyboard_connecting">Connexion au clavier…</string>
     <string name="keyboard_connected">Clavier connecté : %1$s</string>
     <string name="discovery_hint">Joue une note sur le piano !</string>
+    <string name="logo_piano">Piano</string>
+    <string name="logo_trainer">Trainer</string>
+    <string name="home_connected_description">Clavier connecté</string>
+    <string name="home_disconnected_description">Clavier non connecté</string>
+    <string name="home_tempo_best">%1$d %%</string>
     <string name="home_discovery_title">Mode découverte</string>
     <string name="home_discovery_subtitle">Le clavier s\'allume quand tu joues</string>
     <string name="home_song_subtitle">%1$d notes · %2$d sections</string>

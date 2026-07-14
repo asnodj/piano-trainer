@@ -1,14 +1,14 @@
 package dev.asnodj.pianotrainer.ui
 
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.input.pointer.PointerId
+import androidx.compose.ui.input.pointer.changedToDown
+import androidx.compose.ui.input.pointer.changedToUp
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
@@ -123,15 +123,29 @@ fun PianoKeyboard(
 
     val touchModifier = if (onDebugTouch != null) {
         modifier.pointerInput(Unit) {
-            awaitEachGesture {
-                val down = awaitFirstDown()
-                val note = noteAtPosition(
-                    xFraction = down.position.x / size.width,
-                    yFraction = down.position.y / size.height,
-                )
-                onDebugTouch(note, true)
-                waitForUpOrCancellation()
-                onDebugTouch(note, false)
+            // Multitouch: each finger is tracked independently so chords work.
+            awaitPointerEventScope {
+                val notesByPointer = mutableMapOf<PointerId, Int>()
+                while (true) {
+                    val event = awaitPointerEvent()
+                    event.changes.forEach { change ->
+                        when {
+                            change.changedToDown() -> {
+                                val note = noteAtPosition(
+                                    xFraction = change.position.x / size.width,
+                                    yFraction = change.position.y / size.height,
+                                )
+                                notesByPointer[change.id] = note
+                                onDebugTouch(note, true)
+                            }
+                            change.changedToUp() -> {
+                                notesByPointer.remove(change.id)?.let { note ->
+                                    onDebugTouch(note, false)
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
     } else {

@@ -9,6 +9,10 @@ a left-hand thumb note); Für Elise opening theme fingered (first 40 notes, clas
 4-3 alternation + 5-2-1 arpeggios), rest of the piece pending.*
 1. **Project scaffold**: Kotlin + Compose, single module to start; adaptive layouts
    phone/tablet; two local profiles (dad / daughter, DataStore or Room).
+   *2026-07-14 late: profiles DONE (DataStore) — Papa/Lara badges on the home header,
+   best scores saved per profile+song+mode on run completion, stars + tempo best shown
+   on the song tiles. Home restyled: two-tone logo, USB status icon (green/grey),
+   tile grid. App locked to landscape.*
    *2026-07-14: scaffold done, first `assembleDebug` green (placeholder screen only —
    profiles and adaptive layouts still to do). Gradle 8.14.3 + AGP 8.12 + Kotlin 2.2;
    builds with Temurin JDK 21 in `~/.jdks` (see `gradle.properties` — system JDK 25
