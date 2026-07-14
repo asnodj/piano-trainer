@@ -347,13 +347,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /**
-     * Routes a debug-build virtual-keyboard touch into the MIDI stream.
+     * Routes a debug-build virtual-keyboard touch into the MIDI stream, and
+     * sounds it through the phone synth (no physical instrument is producing
+     * the sound in touch mode).
      *
      * @param note MIDI note number.
      * @param isNoteOn True on press, false on release.
      */
     fun injectTouchNote(note: Int, isNoteOn: Boolean) {
         midiInputManager.injectNoteEvent(note, isNoteOn)
+        songPlayer.playLiveNote(note, isNoteOn)
     }
 
     /** Returns to the home screen and stops the current lesson if any. */

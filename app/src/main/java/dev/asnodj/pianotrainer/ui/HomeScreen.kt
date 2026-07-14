@@ -83,6 +83,7 @@ fun HomeScreen(
                     subtitle = stringResource(R.string.home_discovery_subtitle),
                     waitScore = null,
                     tempoScore = null,
+                    highlighted = true,
                     onClick = onOpenDiscovery,
                 )
             }
@@ -193,6 +194,9 @@ private fun ProfileBadge(
 /**
  * One library tile: icon, title, subtitle and the active profile's earned
  * stars (wait mode) plus best tempo score when available.
+ *
+ * @param highlighted True for the discovery tile: amber-tinted background and
+ *   border so it stands out from the songs.
  */
 @Composable
 private fun HomeTile(
@@ -203,10 +207,18 @@ private fun HomeTile(
     waitScore: Int?,
     tempoScore: Int?,
     onClick: () -> Unit,
+    highlighted: Boolean = false,
 ) {
     Card(
         onClick = onClick,
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+        colors = CardDefaults.cardColors(
+            containerColor = if (highlighted) Color(0xFF33290E) else MaterialTheme.colorScheme.surfaceVariant,
+        ),
+        border = if (highlighted) {
+            androidx.compose.foundation.BorderStroke(1.dp, PianoPalette.expectedHalo.copy(alpha = 0.55f))
+        } else {
+            null
+        },
     ) {
         Column(
             modifier = Modifier.fillMaxWidth().padding(14.dp),

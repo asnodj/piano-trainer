@@ -153,6 +153,22 @@ class SongPlayer(private val scope: CoroutineScope) {
         })
     }
 
+    /**
+     * Sounds a single live note (debug virtual-keyboard touches: there is no
+     * physical instrument to produce the sound, so the phone does).
+     *
+     * @param note MIDI note number.
+     * @param isNoteOn True on press, false on release.
+     */
+    fun playLiveNote(note: Int, isNoteOn: Boolean) {
+        ensureDriverStarted()
+        if (isNoteOn) {
+            sendNoteOn(note)
+        } else {
+            sendNoteOff(note)
+        }
+    }
+
     /** Stops the playback and the accompaniment, and silences the synthesizer. */
     fun stop() {
         playbackJob?.cancel()
