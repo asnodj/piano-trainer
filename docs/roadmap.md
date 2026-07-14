@@ -33,11 +33,16 @@
    produces the sound the child hears while playing.
 
 ## v2 — the learning system
-- **Microphone input mode (TOP PRIORITY — user decision 2026-07-14)**: play the real
-  piano without the USB cable, notes detected through the phone mic. Scope honestly:
-  MONOPHONIC pitch detection first (autocorrelation/YIN on AudioRecord) — reliable for
-  the single-note comptines; chords/two-hands stay MIDI-only (documented market-wide
-  weakness). Feed detected notes into the same event stream as MIDI.
+User priority order (2026-07-14 evening): 1. mic mode, 2. semi-auto, 3. tempo+scoring.
+1. **Microphone input mode (TOP PRIORITY — user decision 2026-07-14)**: play the real
+   piano without the USB cable, notes detected through the phone mic. Scope honestly:
+   MONOPHONIC pitch detection first (autocorrelation/YIN on AudioRecord) — reliable for
+   the single-note comptines; chords/two-hands stay MIDI-only (documented market-wide
+   weakness). Detection biased toward the expected wait-mode note (validation, not
+   blind transcription). Feed detected notes into the same event stream as MIDI.
+2. **Semi-auto assist (promoted from v3)**: the app plays the left hand in audio while
+   the player plays the right hand — the piece sounds complete while learning one hand.
+3. **Tempo mode with scoring** (see below).
 - Tempo mode with scoring (timing windows, % + 1–3 stars per section, soft-gating).
 - Practice ladder per song: listen → RH → LH → both (wait) → 50/75% → full speed.
 - **Fingering display**: finger numbers (1–5) inside falling notes + on the virtual
@@ -50,16 +55,22 @@
 - PianoBooster CC-BY beginner course as progression skeleton (credit required).
 
 ## v3+ — ideas
-- Key-press animations (particles/glow rising from keys, Rousseau-video style) —
-  user request 2026-07-14, low priority.
+- Key-press animation polish (bloom at the key line, Rousseau-video style) — current
+  light show shipped 2026-07-14 and approved; further polish stays low priority.
+- Bluetooth MIDI support (BLE adapter on the keyboard's USB TO HOST port, e.g. Yamaha
+  UD-BT01 ~€45-60 or CME WIDI Uhost ~€55-70): user will first evaluate how much the
+  app gets used before buying; nearly free to support code-wise when the time comes.
 - ~~Microphone note detection as an optional wireless mode~~ **PROMOTED to top
   priority by the user (2026-07-14 evening)** — see v2.
 - Debug builds have a virtual-keyboard touch injector (dev tool only, never a
   learning feature): app fully testable without the piano.
 - FluidSynth + GeneralUser GS / MuseScore General SF3 for better sound.
 - Notation bridge: mini-staff above the highway, fading note-name labels.
-- Semi-auto assist (app plays LH, player plays RH).
-- **Self-filmed hand videos** for mastered comptines (phone camera above the keyboard,
+- Notation bridge, Flowkey-style: a scrolling sheet-music banner above the highway.
+  User note 2026-07-14: low priority; must be toggleable (phone screens too small),
+  tablet-first feature.
+- **Self-filmed hand videos** — LOWEST priority (user 2026-07-14) — for mastered
+  comptines (phone camera above the keyboard,
   synced to the song for the "listen/watch" step — Flowkey-style, tiny catalog makes
   it feasible). Interim before that: official YouTube embed of hand videos in the
   "watch" step, adult profile only (ads/suggestions unsuitable for the kid profile).
